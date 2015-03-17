@@ -1,0 +1,45 @@
+--1
+create table southisland_snow_poly as 
+select  mergetab.ogc_fid , mergetab.ufid ,array[ufid] as ufid_components, mergetab.wkb_geometry::geometry 
+from snow_poly as mergetab 
+join cropregions cr 
+on st_intersects(mergetab.wkb_geometry::geometry,cr.wkb_geometry::geometry) 
+and cr.region='southisland' 
+where ufid not in (select merge_id from reblocklist union select drop_id from reblocklist)
+
+--2
+insert into southisland_snow_poly 
+select max(mergetab.ogc_fid) as ogc_fid, mergetab.mxid as ufid, mergetab.flist as ufid_components,st_union (array_agg(wkb_geometry)) as wkb_geometry 
+from ( 
+	select u.mxid,u.flist, o.* 
+	from (
+		select ufid_generator(flist) as mxid,unnest(flist) as unnest, flist 
+		from aggregatedreblocklist
+	) u 
+	join snow_poly o 
+	on u.unnest = o.ufid 
+) mergetab 
+group by mergetab.mxid,mergetab.flist
+
+--3
+insert into northisland_snow_poly 
+select  mergetab.ogc_fid , mergetab.ufid ,mergetab.ufid_components as ufid_components, mergetab.wkb_geometry::geometry 
+from northisland_snow_poly as mergetab 
+join cropregions cr 
+on st_intersects(mergetab.wkb_geometry::geometry,cr.wkb_geometry::geometry) 
+and cr.region='northisland' 
+where ufid not in (select merge_id from reblocklist union select drop_id from reblocklist)
+
+--4
+insert into northisland_snow_poly 
+select max(mergetab.ogc_fid) as ogc_fid, mergetab.mxid as ufid, assemble_ufid_components(mergetab.flist,'northisland_snow_poly') as ufid_components,st_union (array_agg(wkb_geometry)) as wkb_geometry 
+from ( 
+	select u.mxid,array(select distinct unnest(u.flist) order by 1) as flist, o.* 
+	from (
+		select ufid_generator(flist) as mxid,unnest(flist) as unnest, flist 
+		from aggregatedreblocklist
+	) u 
+	join northisland_snow_poly o 
+	on u.unnest = o.ufid 
+) mergetab 
+group by mergetab.mxid,mergetab.flist

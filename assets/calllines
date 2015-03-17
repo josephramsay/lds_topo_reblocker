@@ -1,0 +1,60 @@
+﻿truncate rbl_report;truncate rbl_associations;
+drop table if exists new_slipway_cl;select reblocksplitter('slipway_cl','new','cropregions','st_linemerge(st_union',False);
+drop table if exists new_shelter_belt_cl;select reblocksplitter('shelter_belt_cl','new','cropregions','st_linemerge(st_union',False);
+drop table if exists new_coastline;select reblocksplitter('coastline','new','cropregions','st_linemerge(st_union',False);
+drop table if exists new_walkwire_cl;select reblocksplitter('walkwire_cl','new','cropregions','st_linemerge(st_union',False);
+drop table if exists new_road_cl;select reblocksplitter('road_cl','new','cropregions','st_linemerge(st_union',False);
+drop table if exists new_boom_cl;select reblocksplitter('boom_cl','new','cropregions','st_linemerge(st_union',False);
+drop table if exists new_cutting_edge;select reblocksplitter('cutting_edge','new','cropregions','st_linemerge(st_union',False);
+drop table if exists new_tunnel_cl;select reblocksplitter('tunnel_cl','new','cropregions','st_linemerge(st_union',False);
+drop table if exists new_telephone_cl;select reblocksplitter('telephone_cl','new','cropregions','st_linemerge(st_union',False);
+drop table if exists new_fence_cl;select reblocksplitter('fence_cl','new','cropregions','st_linemerge(st_union',False);
+drop table if exists new_wharf_edge;select reblocksplitter('wharf_edge','new','cropregions','st_linemerge(st_union',False);
+drop table if exists new_waterfall_edge;select reblocksplitter('waterfall_edge','new','cropregions','st_linemerge(st_union',False);
+drop table if exists new_ski_lift_cl;select reblocksplitter('ski_lift_cl','new','cropregions','st_linemerge(st_union',False);
+drop table if exists new_water_race_cl;select reblocksplitter('water_race_cl','new','cropregions','st_linemerge(st_union',False);
+drop table if exists new_cableway_industrial_cl;select reblocksplitter('cableway_industrial_cl','new','cropregions','st_linemerge(st_union',False);
+drop table if exists new_boatramp_cl;select reblocksplitter('boatramp_cl','new','cropregions','st_linemerge(st_union',False);
+drop table if exists new_weir_cl;select reblocksplitter('weir_cl','new','cropregions','st_linemerge(st_union',False);
+drop table if exists new_racetrack_cl;select reblocksplitter('racetrack_cl','new','cropregions','st_linemerge(st_union',False);
+drop table if exists new_waterfall_cl;select reblocksplitter('waterfall_cl','new','cropregions','st_linemerge(st_union',False);
+drop table if exists new_canal_cl;select reblocksplitter('canal_cl','new','cropregions','st_linemerge(st_union',False);
+drop table if exists new_cableway_people_cl;select reblocksplitter('cableway_people_cl','new','cropregions','st_linemerge(st_union',False);
+drop table if exists new_ladder_cl;select reblocksplitter('ladder_cl','new','cropregions','st_linemerge(st_union',False);
+drop table if exists new_cliff_edge;select reblocksplitter('cliff_edge','new','cropregions','st_linemerge(st_union',False);
+drop table if exists new_breakwater_cl;select reblocksplitter('breakwater_cl','new','cropregions','st_linemerge(st_union',False);
+drop table if exists new_ferry_crossing_cl;select reblocksplitter('ferry_crossing_cl','new','cropregions','st_linemerge(st_union',False);
+drop table if exists new_dredge_tailing_cl;select reblocksplitter('dredge_tailing_cl','new','cropregions','st_linemerge(st_union',False);
+drop table if exists new_spillway_edge;select reblocksplitter('spillway_edge','new','cropregions','st_linemerge(st_union',False);
+drop table if exists new_embankment_cl;select reblocksplitter('embankment_cl','new','cropregions','st_linemerge(st_union',False);
+drop table if exists new_dam_cl;select reblocksplitter('dam_cl','new','cropregions','st_linemerge(st_union',False);
+drop table if exists new_slip_edge;select reblocksplitter('slip_edge','new','cropregions','st_linemerge(st_union',False);
+drop table if exists new_bridge_cl;select reblocksplitter('bridge_cl','new','cropregions','st_linemerge(st_union',False);
+drop table if exists new_railway_cl;select reblocksplitter('railway_cl','new','cropregions','st_linemerge(st_union',False);
+drop table if exists new_rapid_cl;select reblocksplitter('rapid_cl','new','cropregions','st_linemerge(st_union',False);
+drop table if exists new_wharf_cl;select reblocksplitter('wharf_cl','new','cropregions','st_linemerge(st_union',False);
+drop table if exists new_track_cl;select reblocksplitter('track_cl','new','cropregions','st_linemerge(st_union',False);
+drop table if exists new_drain_cl;select reblocksplitter('drain_cl','new','cropregions','st_linemerge(st_union',False);
+drop table if exists new_ski_tow_cl;select reblocksplitter('ski_tow_cl','new','cropregions','st_linemerge(st_union',False);
+drop table if exists new_pipeline_cl;select reblocksplitter('pipeline_cl','new','cropregions','st_linemerge(st_union',False);
+
+drop table if exists new_river_cl;select reblocksplitter('river_cl','new','cropregions','st_linemerge(st_union',False);
+drop table if exists new_flume_cl;select reblocksplitter('flume_cl','new','cropregions','st_linemerge(st_union',False);
+drop table if exists new_marine_farm_cl;select reblocksplitter('marine_farm_cl','new','cropregions','st_linemerge(st_union',False);
+
+
+
+select * from new0_river_cl where ufid = 135327537;--oldufid
+select * from new0_river_cl where ufid = 823776702;--newufid
+
+select * from new0_river_cl where ufid_components =  array[3151827,3151829]::double precision[];
+
+update new0_river_cl set ufid = ufid_hash(array[ufid]) where ufid_components = array[3151827,3151829]::double precision[];
+
+
+
+
+select rbl_collision_resolver('new0_river_cl');
+
+select * from rbl_report  rr join rbl_associations ra on ra.ufid = rr.ref
+

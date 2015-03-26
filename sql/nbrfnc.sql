@@ -228,7 +228,8 @@ $BODY$
 declare
 res int;
 
-seqname text := layername||'_ufid_seq';
+--seqname text := layername||'_ufid_seq';
+seqname text := 'topo_rbl_ufid_seq';
 --consider rewriting this to avoid using exceptions
 BEGIN
 --contours hack 2->1

@@ -12,7 +12,7 @@ from twisted.internet.endpoints import TCP4ServerEndpoint
 from twisted.internet import reactor
 
 
-from LayerReader2 import LayerReader, initds, SFDS, PGDS
+from LayerReader import LayerReader, initds, SFDS, PGDS
 
 
 class ReblockFileHandler(FileSender):

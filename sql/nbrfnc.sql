@@ -7,8 +7,13 @@ END
 $BODY$
 LANGUAGE plpgsql VOLATILE;
 
+--drop sequence topo_rbl_ufid_seq; truncate rbl_associations;truncate rbl_report;
 --select reblockall('unknown',array['railway_cl','airport_poly','lake_poly','native_poly'],True)
 --select reblockall('t50_fid',array['airport_poly'],True)
+--select reblockall('t50_fid',array['lake_poly'],True)
+--select reblockall('t50_fid',array['residential_area_poly'],True)
+--select reblockall('t50_fid',array['coastline'],True)
+--select reblockall('t50_fid',array['sand_poly'],True)
 
 CREATE OR REPLACE FUNCTION rbl_init(atab text,rtab text) RETURNS void AS
 --Initialise the report/assoc tables. TODO pass atab/rtab names as args to calling funcs
@@ -203,15 +208,24 @@ atab text := 'rbl_associations';
 BEGIN
 --NB Common column name for PK in assoc table, not necessarily actual PK name. Using 'ufid'
 q1 = 'with latest as ('
-|| ' 	select max(ts) mts from '||atab||' where ufid_components::int[]='||quote_literal(flist)||'::int[] and layer='''||quote_ident(ctab)||''''
-|| ' ) select ufid from '||atab||' ta join latest l on l.mts = ta.ts where ufid_components::int[]='||quote_literal(flist)||'::int[] and layer='''||quote_ident(ctab)||'''';
---raise notice 'seq %',q1;
+|| ' 	select max(ts) mts '
+|| '    from '||atab
+|| '    where ufid_components::int[]='||quote_literal(flist)||'::int[]'
+--|| '    and layer like '''||quote_ident(ctab)||''''
+|| ' ) '
+|| ' select ufid '
+|| ' from '||atab||' ta'
+|| ' join latest l '
+|| ' on l.mts = ta.ts'
+|| ' where ufid_components::int[]='||quote_literal(flist)||'::int[]';
+--|| ' and layer like '''||quote_ident(ctab)||'''';
+raise notice '::: checking for existing ufid for flist %',quote_literal(flist);
 execute q1 into res;
 if res is NULL then
 	execute 'select ufid_sequence('''||ctab||''')' into res;
 	--res = ufid_sequence();
 end if;
-
+raise notice '::: returning %',res;
 return res;
 
 END
@@ -233,16 +247,18 @@ seqname text := 'topo_rbl_ufid_seq';
 --consider rewriting this to avoid using exceptions
 BEGIN
 --contours hack 2->1
-if layername like '%contour%' then
-	seqname := 'contour_ufid_seq';
-end if;
-
+--if layername like '%contour%' then
+--	seqname := 'contour_ufid_seq';
+--end if;
+raise notice '::: get seq num for layer %',layername;
 begin
 	execute 'select nextval('''||seqname||''')' into res;
 exception when others then
+	raise notice '::: Exception getting sequence value %',seqname;
 	execute 'select ufid_seqinit('''||seqname||''')';
 	execute 'select nextval('''||seqname||''')' into res;
 end;
+raise notice '::: have new seq num %',res;
 return res;
 END
 $BODY$
@@ -668,6 +684,27 @@ $BODY$
 LANGUAGE plpgsql VOLATILE;
 -- ---------------------------------------------------------------------------
 
+CREATE OR REPLACE FUNCTION rbl_assign_final_ufid(interim text, pkey text) RETURNS text AS
+-- replace temporary sequence numbers with final versions and reset the temp generator
+$BODY$
+DECLARE
+fseq text := 'topo_rbl_final_seq';
+fseq_start int := 99990000000000;
+tseq text := 'topo_rbl_temp_seq';
+tseq_start int := 99990000000000;
+
+BEGIN
+execute 'update '||interim||' set '||ufid||' = nextval(''fseq'') where '||pkey||' >= '||tseq_start as res0;
+execute 'alter sequence '||tseq||' restart with '||tseq_start as res1;
+
+raise notice '::: asc=%, new=%, tab=%, int=%',qasc,qfdp,qtab,qidp;
+
+return res;
+END
+$BODY$
+LANGUAGE plpgsql VOLATILE;
+
+-- ---------------------------------------------------------------------------
 
 CREATE OR REPLACE FUNCTION rbl_disassociate_ufid_components(interim text, final text,pkey text) RETURNS text AS
 -- Removes the ufid_components field from the active table to the associations table
@@ -689,13 +726,12 @@ cols = columntext(interim,'',',',array['ufid_components'],'');
 qasc = 'insert into '||atab||' select date_trunc(''minute'',current_timestamp),'||quote_literal(final)||', '||pkey||', ufid_components from '||interim||' where array_length(ufid_components,1)>1';
 qfdp = 'drop table if exists '||final;
 qtab = 'create table '||final||' as select '||cols||' from '||interim;
-
 qidp = 'drop table '||interim;
-raise notice 'asc=%, new=%, tab=%, int=%',qasc,qfdp,qtab,qidp;
+raise notice '::: asc=%, new=%, tab=%, int=%',qasc,qfdp,qtab,qidp;
 execute qasc as res;
 execute qfdp as res;
 execute qtab as res;
-execute qidp as res;
+--execute qidp as res;
 
 return res;
 END

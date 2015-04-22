@@ -7,13 +7,14 @@ END
 $BODY$
 LANGUAGE plpgsql VOLATILE;
 
---drop sequence topo_rbl_ufid_seq; truncate rbl_associations;truncate rbl_report;
+--drop sequence topo_rbl_temp_seq; drop sequence topo_rbl_final_seq; truncate rbl_associations;truncate rbl_report;
 --select reblockall('unknown',array['railway_cl','airport_poly','lake_poly','native_poly'],True)
 --select reblockall('t50_fid',array['airport_poly'],True)
 --select reblockall('t50_fid',array['lake_poly'],True)
 --select reblockall('t50_fid',array['residential_area_poly'],True)
 --select reblockall('t50_fid',array['coastline'],True)
---select reblockall('t50_fid',array['sand_poly'],True)
+--select reblockall('t50_fid',array['snow_poly'],True)
+--select reblockall('t50_fid',array['ferry_crossing_cl'],True)
 
 CREATE OR REPLACE FUNCTION rbl_init(atab text,rtab text) RETURNS void AS
 --Initialise the report/assoc tables. TODO pass atab/rtab names as args to calling funcs
@@ -21,7 +22,9 @@ $BODY$
 BEGIN
 	raise notice 'Initialising % & %.',atab,rtab;
 	execute 'create table if not exists '||rtab||' (ref int, msg text, ts timestamp)';
+	execute 'grant all on table '||rtab||' TO public';
 	execute 'create table if not exists '||atab||' (ts timestamp, layer varchar,ufid int, ufid_components int[])';
+	execute 'grant all on table '||atab||' TO public';
 END
 $BODY$
 LANGUAGE plpgsql VOLATILE;
@@ -181,25 +184,10 @@ RETURN True;
 END
 $BODY$
 LANGUAGE plpgsql VOLATILE;
--- ----------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION ufid_generator(flist int[],wkb_geometry geometry) RETURNS int AS
-$BODY$
-BEGIN
-return ufid_hash_generator(flist,wkb_geometry);
-END
-$BODY$
-LANGUAGE plpgsql VOLATILE;
 
-CREATE OR REPLACE FUNCTION ufid_generator(flist int[],seq_table text) RETURNS int AS
-$BODY$
-BEGIN
-return ufid_sequence_generator(flist,seq_table);
-END
-$BODY$
-LANGUAGE plpgsql VOLATILE;
 -- ----------------------------------------------------------------------------
 
-CREATE OR REPLACE FUNCTION ufid_sequence_generator(flist int[],ctab text) RETURNS int AS
+CREATE OR REPLACE FUNCTION ufid_generator(flist int[],ctab text, final boolean) RETURNS int AS
 $BODY$
 declare
 q1 text;
@@ -219,10 +207,11 @@ q1 = 'with latest as ('
 || ' on l.mts = ta.ts'
 || ' where ufid_components::int[]='||quote_literal(flist)||'::int[]';
 --|| ' and layer like '''||quote_ident(ctab)||'''';
+
 raise notice '::: checking for existing ufid for flist %',quote_literal(flist);
 execute q1 into res;
 if res is NULL then
-	execute 'select ufid_sequence('''||ctab||''')' into res;
+	execute 'select ufid_sequence('''||ctab||''','||final||')' into res;
 	--res = ufid_sequence();
 end if;
 raise notice '::: returning %',res;
@@ -237,25 +226,38 @@ LANGUAGE plpgsql VOLATILE;
 
 
 -- ---------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION ufid_sequence(layername text) RETURNS int AS
+CREATE OR REPLACE FUNCTION ufid_sequence(layername text,final boolean) RETURNS int AS
 $BODY$
 declare
 res int;
-
+seqname text;
+seqstart int;
 --seqname text := layername||'_ufid_seq';
-seqname text := 'topo_rbl_ufid_seq';
+tseq text := 'topo_rbl_temp_seq';
+tseq_start int := 99900000;
+
+fseq text := 'topo_rbl_final_seq';
+fseq_start int := 100000000;
 --consider rewriting this to avoid using exceptions
 BEGIN
 --contours hack 2->1
 --if layername like '%contour%' then
 --	seqname := 'contour_ufid_seq';
 --end if;
+if final then
+	seqname = fseq;
+	seqstart = fseq_start;
+else
+	seqname = tseq;
+	seqstart = tseq_start;
+end if;
+
 raise notice '::: get seq num for layer %',layername;
 begin
 	execute 'select nextval('''||seqname||''')' into res;
 exception when others then
 	raise notice '::: Exception getting sequence value %',seqname;
-	execute 'select ufid_seqinit('''||seqname||''')';
+	execute 'select ufid_seqinit('''||seqname||''','||seqstart||')';
 	execute 'select nextval('''||seqname||''')' into res;
 end;
 raise notice '::: have new seq num %',res;
@@ -264,15 +266,16 @@ END
 $BODY$
 LANGUAGE plpgsql VOLATILE;
 -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- 
-CREATE OR REPLACE FUNCTION ufid_seqinit(seqname text) returns void as
+CREATE OR REPLACE FUNCTION ufid_seqinit(seqname text, startval int) returns void as
 $BODY$
 declare
 cs text;
-startval int := 100000000;
 
 BEGIN
+raise notice '::: seq % start at %',seqname,startval;
 if not exists (select 0 from pg_class where relname = seqname) then 
 	execute 'create sequence '||seqname||' start '||startval; 
+	execute 'grant all on table '||seqname||' to public';
 end if;
 
 END
@@ -684,22 +687,40 @@ $BODY$
 LANGUAGE plpgsql VOLATILE;
 -- ---------------------------------------------------------------------------
 
-CREATE OR REPLACE FUNCTION rbl_assign_final_ufid(interim text, pkey text) RETURNS text AS
+CREATE OR REPLACE FUNCTION rbl_assign_final_ufid(interim text, pkey text) RETURNS void AS
 -- replace temporary sequence numbers with final versions and reset the temp generator
 $BODY$
 DECLARE
+qupd text;
+--qalt text;
+res text;
 fseq text := 'topo_rbl_final_seq';
-fseq_start int := 99990000000000;
+fseq_start int := 100000000;
+--start temp seq distinct from final to determine if temp ids slip into final output
 tseq text := 'topo_rbl_temp_seq';
-tseq_start int := 99990000000000;
+tseq_start int := 99900000;
 
 BEGIN
-execute 'update '||interim||' set '||ufid||' = nextval(''fseq'') where '||pkey||' >= '||tseq_start as res0;
-execute 'alter sequence '||tseq||' restart with '||tseq_start as res1;
+--replace ids when greater than tseq_start (and less than fseq_start? not needed since composites are not in source)
+--execute 'select ufid_generator(ufid_components, '''||fseq||''',True) from '||interim||' where '||pkey||' >= '||tseq_start||' into res;
+qupd = 'update '||interim||' set '||pkey||' = ufid_generator(ufid_components, '''||fseq||''',True) where '||pkey||' >= '||tseq_start;
 
-raise notice '::: asc=%, new=%, tab=%, int=%',qasc,qfdp,qtab,qidp;
+--qalt = 'alter sequence if exists '||tseq||' restart with '||tseq_start;
 
-return res;
+raise notice '::: qupd=%',qupd;
+
+execute qupd as res;
+exception when others then
+	raise notice '::: **** ASSERT - shouldnt get here *** Exception getting final sequence value %',fseq;
+	execute 'select ufid_seqinit('''||fseq||''','||fseq_start||')';
+	execute qupd as res;
+
+if exists (SELECT 0 FROM pg_class where relname = tseq) then
+   execute 'alter sequence '||tseq||' restart with '||tseq_start;
+end if;
+
+
+return;
 END
 $BODY$
 LANGUAGE plpgsql VOLATILE;
@@ -710,10 +731,11 @@ CREATE OR REPLACE FUNCTION rbl_disassociate_ufid_components(interim text, final 
 -- Removes the ufid_components field from the active table to the associations table
 $BODY$
 DECLARE
-qasc text;
-qtab text;
-qidp text;
-qfdp text;
+qafi text; -- assign final id
+qitf text; -- insert table fin
+qctf text; -- create table fin
+qdti text; -- drop table int
+qdtf text; -- drop table fin
 cols TEXT;
 res TEXT;
 atab text := 'rbl_associations';
@@ -721,17 +743,23 @@ atab text := 'rbl_associations';
 BEGIN
 
 execute 'create table if not exists '||atab||' (ts timestamp, layer varchar,ufid int, ufid_components int[])' as res;
+--assign final ufid to interim
+qafi = 'select rbl_assign_final_ufid('''||interim||''', '''||pkey||''')';
 
 cols = columntext(interim,'',',',array['ufid_components'],'');
-qasc = 'insert into '||atab||' select date_trunc(''minute'',current_timestamp),'||quote_literal(final)||', '||pkey||', ufid_components from '||interim||' where array_length(ufid_components,1)>1';
-qfdp = 'drop table if exists '||final;
-qtab = 'create table '||final||' as select '||cols||' from '||interim;
-qidp = 'drop table '||interim;
-raise notice '::: asc=%, new=%, tab=%, int=%',qasc,qfdp,qtab,qidp;
-execute qasc as res;
-execute qfdp as res;
-execute qtab as res;
---execute qidp as res;
+--strip ufid_comps from interim
+qitf = 'insert into '||atab||' select date_trunc(''minute'',current_timestamp),'||quote_literal(final)||', '||pkey||', ufid_components from '||interim||' where array_length(ufid_components,1)>1';
+qdtf = 'drop table if exists '||final;
+--copy interim to final
+qctf = 'create table '||final||' as select '||cols||' from '||interim;
+qdti = 'drop table '||interim;
+raise notice '::: itf=%, dtf=%, ctf=%, afi=%, dti=%',qitf,qdtf,qctf,qafi,qdti;
+
+execute qafi as res;
+execute qitf as res;
+execute qdtf as res;
+execute qctf as res;
+execute qdti as res;
 
 return res;
 END
@@ -840,8 +868,8 @@ end if;
 --
 q5 = 'insert into '||dst_table
 || ' with splitmerge as ('
-|| ' 	select ufid_generator(jointab.ufid_components,'''||original||''') '||pkey||',* from ('
---|| ' 	select ufid_generator(jointab.ufid_components,jointab.wkb_geometry) '||pkey||',* from ('
+|| ' 	select ufid_generator(jointab.ufid_components,'''||original||''',False) '||pkey||',* from ('
+--|| ' 	select ufid_generator(jointab.ufid_components,jointab.wkb_geometry, False) '||pkey||',* from ('
 || ' 		select max(mergetab.ogc_fid) as ogc_fid, ' || coltext2 || ufidc2 || op
 || '		(array_agg(st_snaptogrid(wkb_geometry,'||quote_literal(stg_mv)||closeb||'))) as wkb_geometry' 
 || '		from ( '

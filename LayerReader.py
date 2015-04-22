@@ -47,8 +47,11 @@ DST_TABLE_PREFIX = 'new_'
 SHP_SUFFIXES = ('shp','shx','dbf','prj','cpg')
 OGR_COPY_PREFS = ["OVERWRITE=NO","GEOM_TYPE=geometry","ENCODING=UTF-8"]
 
-DEF_SHAPE_PATH = ('~',)
-
+if re.search('posix',os.name):
+    DEF_SHAPE_PATH = ('~',)
+else:
+    DEF_SHAPE_PATH = ('C:\\',)
+    
 class LayerReader(object):
     _src = None
     _dst = None
@@ -501,6 +504,11 @@ def main():
         print msg
         sys.exit(2)
     
+    #do the help check first
+    if any([True for i in opts if re.search('-h',i[0])]):
+        print __doc__
+        sys.exit(0)
+        
     #opts
     for o, a in opts:
         if o in ("-h", "--help"):

@@ -48,7 +48,7 @@ SHP_SUFFIXES = ('shp','shx','dbf','prj','cpg')
 OGR_COPY_PREFS = ["OVERWRITE=NO","GEOM_TYPE=geometry","ENCODING=UTF-8"]
 
 if re.search('posix',os.name):
-    DEF_SHAPE_PATH = ('~',)
+    DEF_SHAPE_PATH = ('/home/',)
 else:
     DEF_SHAPE_PATH = ('C:\\',)
     
@@ -233,6 +233,7 @@ class PGDS(_DS):
     
     def __init__(self,fname=None):
         super(PGDS,self).__init__()
+        #print 'PGDS',fname
         if not fname: fname = self.ogrconnstr()
         self.dsl = {fname:self.initalise(fname, True)}
         
@@ -356,6 +357,7 @@ class SFDS(_DS):
     
     def __init__(self,fname=None):
         super(SFDS,self).__init__()
+        #print 'SFDS',fname
         self._initpath(fname)
         
     def _initpath(self,fname):
@@ -529,6 +531,7 @@ def main():
             selectflag = True
         if o in ("-d", "--dir"):
             spath = a
+            print 'setting spath',spath
         if o in ("-l", "--layer"):
             layer = [a,]
         if o in ("-u", "--ufid"):

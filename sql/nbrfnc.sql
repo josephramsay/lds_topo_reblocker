@@ -1,4 +1,12 @@
-﻿--select reblockall()
+--
+-- Reblocking SQL
+-- Version - 1.0
+-- Date - 24-04-2015
+--
+
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+
 CREATE OR REPLACE FUNCTION reblockall() RETURNS boolean AS
 $BODY$
 BEGIN
@@ -7,14 +15,8 @@ END
 $BODY$
 LANGUAGE plpgsql VOLATILE;
 
---drop sequence topo_rbl_temp_seq; drop sequence topo_rbl_final_seq; truncate rbl_associations;truncate rbl_report;
---select reblockall('unknown',array['railway_cl','airport_poly','lake_poly','native_poly'],True)
---select reblockall('t50_fid',array['airport_poly'],True)
---select reblockall('t50_fid',array['lake_poly'],True)
---select reblockall('t50_fid',array['residential_area_poly'],True)
---select reblockall('t50_fid',array['coastline'],True)
---select reblockall('t50_fid',array['snow_poly'],True)
---select reblockall('t50_fid',array['ferry_crossing_cl'],True)
+-- ----------------------------------------------------------------------------
+-- UTILITY
 
 CREATE OR REPLACE FUNCTION rbl_init(atab text,rtab text) RETURNS void AS
 --Initialise the report/assoc tables. TODO pass atab/rtab names as args to calling funcs
@@ -25,11 +27,45 @@ BEGIN
 	execute 'grant all on table '||rtab||' TO public';
 	execute 'create table if not exists '||atab||' (ts timestamp, layer varchar,ufid int, ufid_components int[])';
 	execute 'grant all on table '||atab||' TO public';
+	execute 'create index on '||atab||' (ufid,ufid_components)';
 END
 $BODY$
 LANGUAGE plpgsql VOLATILE;
 
---select reblockall('ufid',True)
+-- ----------------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION ufid_column_identifier(qtab text) RETURNS text AS
+-- Attempts to guess the name of the primary-key/ufid column (if this is not provided)
+$BODY$
+DECLARE 
+	colname text;
+	q1 text;
+	res text;
+BEGIN
+	q1 = 'select column_name'
+	|| ' from information_schema.columns'
+	|| ' where table_name='||quote_literal(qtab)
+	|| ' and not column_name = any(array[''ogc_fid'',''wkb_geometry''])';
+
+	for colname in execute q1
+	loop
+		q1 = 'select max(count) from (select count(*),'||colname||' from '||qtab||' group by '||colname||') a';
+		
+		execute q1 into res;
+		if res='1' then
+			raise notice'UFID DETECT %',colname;
+			return colname;
+		end if;
+	end loop;
+	
+return 'ufid';
+END
+$BODY$
+LANGUAGE plpgsql VOLATILE;
+
+-- ----------------------------------------------------------------------------
+-- MANAGEMENT
+
 
 CREATE OR REPLACE FUNCTION reblockall(pkey text, filter text[], overwrite boolean) RETURNS boolean AS
 --Main reblocking function calling all tables in schema filtered by filter list
@@ -99,213 +135,6 @@ END
 $BODY$
 LANGUAGE plpgsql VOLATILE;
 
--- ----------------------------------------------------------------------------
---select ufid_column_identifier('new_lake_poly')
-CREATE OR REPLACE FUNCTION ufid_column_identifier(qtab text) RETURNS text AS
-$BODY$
-DECLARE 
-	colname text;
-	q1 text;
-	res text;
-BEGIN
-	q1 = 'select column_name'
-	|| ' from information_schema.columns'
-	|| ' where table_name='||quote_literal(qtab)
-	|| ' and not column_name = any(array[''ogc_fid'',''wkb_geometry''])';
-
-	for colname in execute q1
-	loop
-		q1 = 'select max(count) from (select count(*),'||colname||' from '||qtab||' group by '||colname||') a';
-		
-		execute q1 into res;
-		if res='1' then
-			raise notice'UFID DETECT %',colname;
-			return colname;
-		end if;
-	end loop;
-	
-return 'ufid';
-END
-$BODY$
-LANGUAGE plpgsql VOLATILE;
-
--- ----------------------------------------------------------------------------
---select reblockclean();
-CREATE OR REPLACE FUNCTION reblockclean() RETURNS boolean AS
---Temporary function to delete test tables. *Remove for production
-$BODY$
-DECLARE
-	res boolean;
-	q1 TEXT;
-	rc int;
-	layer character varying;
-	gtype character varying;
-	schma character varying := 'public';
-	xtabl character varying := 'spatial_ref_sys';
-	threshold int := 150000;
-	boundary text := 'cropregions';
-BEGIN
-	q1 = 'select tablename'
-	|| ' from pg_tables'
-	|| ' where schemaname = '||quote_literal(schma)
-	--|| ' and tablename like '||quote_literal('%_poly')
-	--|| ' and not tablename like '||quote_literal('new_%')||' and not tablename like '||quote_literal('northisland%')|| ' and not tablename like '||quote_literal('southisland%')|| ' and not tablename like '||quote_literal('reblocklist%')|| ' and not tablename like '||quote_literal('aggregatedreblocklist%')
-	|| ' and not tablename like ''spatial_ref_sys'' and not tablename like ''cropregions'''
-	|| ' order by tablename';
-	for layer in execute q1
-	loop
-		--execute 'select GeometryType(wkb_geometry::geometry) from '||quote_ident(layer) into gtype;
-		--if gtype in ('POLYGON','MULTIPOLYGON') then
-		raise notice 'Removing Temporary tables for Layer %. %',layer,clock_timestamp();
-
-		execute 'drop table if exists reblocklist_northisland_northsouth_'||quote_ident(layer);
-		execute 'drop table if exists reblocklist_northisland_eastwest_'||quote_ident(layer);
-		execute 'drop table if exists reblocklist_southisland_northsouth_'||quote_ident(layer);
-		execute 'drop table if exists reblocklist_southisland_eastwest_'||quote_ident(layer);
-
-		execute 'drop table if exists aggregatedreblocklist_northisland_northsouth_'||quote_ident(layer);
-		execute 'drop table if exists aggregatedreblocklist_northisland_eastwest_'||quote_ident(layer);
-		execute 'drop table if exists aggregatedreblocklist_southisland_northsouth_'||quote_ident(layer);
-		execute 'drop table if exists aggregatedreblocklist_southisland_eastwest_'||quote_ident(layer);
-
-		execute 'drop table if exists northisland_northsouth_'||quote_ident(layer);
-		execute 'drop table if exists northisland_eastwest_'||quote_ident(layer);
-		execute 'drop table if exists southisland_northsouth_'||quote_ident(layer);
-		execute 'drop table if exists southisland_eastwest_'||quote_ident(layer);
-
-		execute 'drop table if exists new_'||quote_ident(layer);
-		--execute 'drop table if exists '||quote_ident(layer);
-		--execute 'truncate table rbl_associations';
-
-		--end if;
-	end loop;
-	raise notice 'Reblock Cleaning Complete. %',clock_timestamp();
-RETURN True;
-END
-$BODY$
-LANGUAGE plpgsql VOLATILE;
-
--- ----------------------------------------------------------------------------
-
-CREATE OR REPLACE FUNCTION ufid_generator(flist int[],ctab text, final boolean) RETURNS int AS
-$BODY$
-declare
-q1 text;
-res int;
-atab text := 'rbl_associations';
-BEGIN
---NB Common column name for PK in assoc table, not necessarily actual PK name. Using 'ufid'
-q1 = 'with latest as ('
-|| ' 	select max(ts) mts '
-|| '    from '||atab
-|| '    where ufid_components::int[]='||quote_literal(flist)||'::int[]'
---|| '    and layer like '''||quote_ident(ctab)||''''
-|| ' ) '
-|| ' select ufid '
-|| ' from '||atab||' ta'
-|| ' join latest l '
-|| ' on l.mts = ta.ts'
-|| ' where ufid_components::int[]='||quote_literal(flist)||'::int[]';
---|| ' and layer like '''||quote_ident(ctab)||'''';
-
-raise notice '::: checking for existing ufid for flist %',quote_literal(flist);
-execute q1 into res;
-if res is NULL then
-	execute 'select ufid_sequence('''||ctab||''','||final||')' into res;
-	--res = ufid_sequence();
-end if;
-raise notice '::: returning %',res;
-return res;
-
-END
-$BODY$
-LANGUAGE plpgsql VOLATILE;
---drop table if exists new_snow_poly;select reblocksplitter('snow_poly','new','ufid','cropregions','st_union',False)
---drop table if exists new_river_cl;select reblocksplitter('river_cl','new','ufid','cropregions','st_linemerge(st_union',False)
--- -----------------------------------------------------------------------------------------------------------------------
-
-
--- ---------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION ufid_sequence(layername text,final boolean) RETURNS int AS
-$BODY$
-declare
-res int;
-seqname text;
-seqstart int;
---seqname text := layername||'_ufid_seq';
-tseq text := 'topo_rbl_temp_seq';
-tseq_start int := 99900000;
-
-fseq text := 'topo_rbl_final_seq';
-fseq_start int := 100000000;
---consider rewriting this to avoid using exceptions
-BEGIN
---contours hack 2->1
---if layername like '%contour%' then
---	seqname := 'contour_ufid_seq';
---end if;
-if final then
-	seqname = fseq;
-	seqstart = fseq_start;
-else
-	seqname = tseq;
-	seqstart = tseq_start;
-end if;
-
-raise notice '::: get seq num for layer %',layername;
-begin
-	execute 'select nextval('''||seqname||''')' into res;
-exception when others then
-	raise notice '::: Exception getting sequence value %',seqname;
-	execute 'select ufid_seqinit('''||seqname||''','||seqstart||')';
-	execute 'select nextval('''||seqname||''')' into res;
-end;
-raise notice '::: have new seq num %',res;
-return res;
-END
-$BODY$
-LANGUAGE plpgsql VOLATILE;
--- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- 
-CREATE OR REPLACE FUNCTION ufid_seqinit(seqname text, startval int) returns void as
-$BODY$
-declare
-cs text;
-
-BEGIN
-raise notice '::: seq % start at %',seqname,startval;
-if not exists (select 0 from pg_class where relname = seqname) then 
-	execute 'create sequence '||seqname||' start '||startval; 
-	execute 'grant all on table '||seqname||' to public';
-end if;
-
-END
-$BODY$
-LANGUAGE plpgsql VOLATILE;
-
--- ----------------------------------------------------------------------------------------------------------------------
---returns wheteher a particular feature has changed or not
---TODO evaluate md5 to geo compare speeds 
-CREATE OR REPLACE FUNCTION ufid_changedetect(ufid int,layer1 text, layer2 text,pkey text) RETURNS boolean AS
-$BODY$
-DECLARe
-	q0 text;
-	res boolean;
-
-BEGIN
-
-q0 = 'select l1.g != l2.g from'
-|| ' (select md5(wkb_geometry::text) md5g, wkb_geometry::text g from '||layer1||' where '||pkey||'='||ufid||') l1,'
-|| ' (select md5(wkb_geometry::text) md5g, wkb_geometry::text g from '||layer2||' where '||pkey||'='||ufid||') l2';
---raise notice 'cd %',q0;
-execute q0 into res;
-
-RETURN res;
-END
-$BODY$
-LANGUAGE plpgsql VOLATILE;
---select compare_ufid('snow_poly')
-
--- ---------------------------------------------------------------------------
 -- ---------------------------------------------------------------------------
 
 CREATE OR REPLACE FUNCTION reblocksplitter(original text,prefix text,pkey text, boundary text, op text,touch boolean) RETURNS boolean AS
@@ -367,8 +196,10 @@ $BODY$
 LANGUAGE plpgsql VOLATILE;
 
 -- ---------------------------------------------------------------------------
+-- TEXT
 
 CREATE OR REPLACE FUNCTION columntext(layer text, prefix text, delim text, omissions text[],torl text) RETURNS character varying AS
+-- Build a delimited list of column names
 $BODY$
 DECLARE 
 cstr TEXT;
@@ -389,51 +220,9 @@ END
 $BODY$
 LANGUAGE plpgsql VOLATILE;
 
-
-
--- ---------------------------------------------------------------------------
--- SQL Funcs to manipulate geometries as TEXT
--- triple bypass runs too slowly to be useful
-CREATE OR REPLACE FUNCTION loop_removal(geometry) RETURNS geometry AS
---Removes loops in multilinestrings by finding and deleting instances of ML((...),(A,b,c,d,A),(...))
-'select ST_LineMerge(ST_GeomFromText(regexp_replace(regexp_replace(ST_AsText($1),''\((\d+\.*\d*\s\d+\.*\d*),[\s\d,.]*\1\),*'',''''),'',\)'','''')));'
-LANGUAGE sql VOLATILE;
-
--- ---------------------------------------------------------------------------
-
-CREATE OR REPLACE FUNCTION triple_bypass(geometry) RETURNS geometry AS
--- Strips one of 3x duplicate coordinates from MLS. This is VERY slow 
-'select ST_LineMerge(ST_GeomFromText(regexp_replace(regexp_replace(ST_AsText($1),(regexp_matches(ST_AsText($1),''(\d+\.*\d*\s\d+\.*\d*).+\1.+\1'',''g''))[1]||'','',''''),'',\)'','')'')));'
-LANGUAGE sql VOLATILE;
-
-
---select regexp_replace('FUNC((1.0 2.0, 1.0 3.0, 1.0 4.0), (1.0 2.0, 1.0 5.0), (2.0 3.0, 3.0 4.0, 1.0 2.0))','(\d+\.\d+\s\d+\.\d+)(?=.+\1.+\1)','XXX');
---select regexp_matches('FUNC((1.0 2.0, 1.0 3.0, 1.0 4.0), (1.0 2.0, 1.0 5.0), (2.0 3.0, 3.0 4.0, 1.0 2.0))','(\d+\.\d+\s\d+\.\d+).+\1.+\1','g');
--- ---------------------------------------------------------------------------
-
--- select assemble_ufid_components(array[10724173.0000000,10724195.000000]::int[],'new_snow_poly','ufid')
-CREATE OR REPLACE FUNCTION assemble_ufid_components(flist int[],layer character varying,pkey text) RETURNS int[] AS
-$BODY$
-DECLARE 
-ufid int;
-composite int[] := array[]::int[];
-res int[];
-q text; 
-BEGIN
-foreach ufid in array flist
-loop
-	execute 'select ufid_components::int[] from '||layer||' where '||pkey||'='||ufid into res;
-	composite = array_cat(composite,res); 
-	--raise notice 'compo %',composite;
-end loop;
-
-return composite;
-END
-$BODY$
-LANGUAGE plpgsql VOLATILE;
-
 -- ---------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION trail(arg_str text, dchar text) RETURNS text AS
+-- Adds a trailing character to a string
 $BODY$
 BEGIN
 if (arg_str = '') then return '';
@@ -444,7 +233,7 @@ $BODY$
 LANGUAGE plpgsql VOLATILE;
 
 -- ---------------------------------------------------------------------------
--- CUSTOM AGG
+-- CUSTOM AGGREGATES
 
 create or replace function array_rbl_compress(anyarray) returns anyarray as
 'select distinct array(select distinct unnest($1) order by 1)'
@@ -463,13 +252,13 @@ STYPE=anyarray,
 FINALFUNC=array_rbl_compress,
 INITCOND=$${}$$
 );
--- ---------------------------------------------------------------------------
--- BOUNDARY CHECKER
--- NB Written for Topo50 maps and though not tested with, should also work on Topo250 maps since they use a subset of the Topo50 mapsheet boundaries
 
---select northsouth(4794000) = select northsouth(5334000) = T
---select northsouth(4793000) = select northsouth(366000) = select northsouth(6234000) = select northsouth(5334001) = F
+-- ---------------------------------------------------------------------------
+-- BOUNDARY CHECK
+-- NOTE. Written for Topo50 maps and though not tested with, should also work on Topo250 maps since they use a subset of the Topo50 mapsheet boundaries
+
 CREATE OR REPLACE FUNCTION northsouth(ns numeric) RETURNS boolean AS
+-- Function returning assessment on whether a latitude coordinate lies on a North-South boundary
 $BODY$
 DECLARE
 minx int := 131;
@@ -486,10 +275,8 @@ END
 $BODY$
 LANGUAGE plpgsql VOLATILE;
 
--- ---------------------------------------------------------------------------
---select eastwest(4794000) = T
---select eastwest(4793000) = F
 CREATE OR REPLACE FUNCTION eastwest(ew numeric) RETURNS boolean AS
+-- Function returning assessment on whether a longitude coordinate lies on an East-West boundary
 $BODY$
 DECLARE
 minx int := 45;
@@ -507,11 +294,10 @@ $BODY$
 LANGUAGE plpgsql VOLATILE;
 
 -- ---------------------------------------------------------------------------
-
--- select generate_rbl('exotic_poly','northisland','ufid','((t1.N and t2.S) or (t1.S and t2.N))','ogc_fid , ufid , species,','((t1.species is null and t2.species is null) or t1.species = t2.species)')
--- select generate_rbl('exotic_poly','northisland','ufid','((t1.N and t2.S) or (t1.S and t2.N))',trail('ogc_fid , ufid , species',','),trail('((t1.species is null and t2.species is null) or t1.species = t2.species)','and'))
+-- REBLOCK IDENTIFY
 
 CREATE OR REPLACE FUNCTION generate_rbl(rbl text,layer text,pkey text,bndry text,touch boolean,region text,firstpass boolean,coltext text,noidgeo text,snap_grid_size double precision) RETURNS text AS
+-- Generates the reblocklist testing for 'touches' across mapsheet boundaries
 $BODY$
 DECLARE
 qstr text;
@@ -603,11 +389,11 @@ END
 $BODY$
 LANGUAGE plpgsql VOLATILE;
 -- --------------------------------------------------------------------------------------------------
--- Utility function to log and raise progress messages in long multipart queries
+
 CREATE OR REPLACE FUNCTION report_rbl(d int, t text) RETURNS int AS
+-- Utility function to log and raise progress messages in long multipart queries
 $BODY$
 BEGIN
--- dont want to call this on every ufid call
 -- create table if not exists rbl_report (ref int, msg text, ts timestamp);
 insert into rbl_report values (d,t,current_timestamp);
 raise notice 'REPORT % - % - %',d,t,current_timestamp;
@@ -618,8 +404,10 @@ $BODY$
 LANGUAGE plpgsql VOLATILE;
 
 -- ---------------------------------------------------------------------------
--- must use union all in recursive for PG<8.5 since arrays not hashable before then
+
 CREATE OR REPLACE FUNCTION generate_aggrbl(arbl text, rbl text) RETURNS text AS
+-- Aggreagte the reblocklist merging pairs into a list of all combined blocks
+-- NOTE. Must use union all in recursive for PG<8.5 since arrays not hashable before then
 $BODY$
 DECLARE
 qstr text;
@@ -668,10 +456,10 @@ $BODY$
 LANGUAGE plpgsql VOLATILE;
 
 -- ---------------------------------------------------------------------------
--- C O L L I S I O N
-
+-- COLLISION DETECT
 
 CREATE OR REPLACE FUNCTION rbl_collision_detect(ctab text,pkey text) RETURNS boolean AS
+--final check to make sure we dont have duplicate ufids
 $BODY$
 DECLARE
 q1 text;
@@ -685,7 +473,128 @@ return res::int>0;
 END
 $BODY$
 LANGUAGE plpgsql VOLATILE;
+
+
 -- ---------------------------------------------------------------------------
+-- UFID ASSIGNMENT
+
+CREATE OR REPLACE FUNCTION ufid_generator(flist int[],ctab text, final boolean) RETURNS int AS
+$BODY$
+declare
+q1 text;
+res int;
+atab text := 'rbl_associations';
+BEGIN
+--NB Common column name for PK in assoc table, not necessarily actual PK name. Using 'ufid'
+q1 = 'with latest as ('
+|| ' 	select max(ts) mts '
+|| '    from '||atab
+|| '    where ufid_components::int[]='||quote_literal(flist)||'::int[]'
+--|| '    and layer like '''||quote_ident(ctab)||'''' --add these lines back in if we revert to table independent sequencing
+|| ' ) '
+|| ' select ufid '
+|| ' from '||atab||' ta'
+|| ' join latest l '
+|| ' on l.mts = ta.ts'
+|| ' where ufid_components::int[]='||quote_literal(flist)||'::int[]';
+--|| ' and layer like '''||quote_ident(ctab)||'''';
+
+raise notice '::: checking for existing ufid for flist %',quote_literal(flist);
+execute q1 into res;
+if res is NULL then
+	execute 'select ufid_sequence('''||ctab||''','||final||')' into res;
+	--res = ufid_sequence();
+end if;
+raise notice '::: returning %',res;
+return res;
+
+END
+$BODY$
+LANGUAGE plpgsql VOLATILE;
+
+-- -----------------------------------------------------------------------------------------------------------------------
+
+
+CREATE OR REPLACE FUNCTION ufid_sequence(layername text,final boolean) RETURNS int AS
+$BODY$
+declare
+res int;
+seqname text;
+seqstart int;
+--seqname text := layername||'_ufid_seq';
+tseq text := 'topo_rbl_temp_seq';
+tseq_start int := 99900000;
+
+fseq text := 'topo_rbl_final_seq';
+fseq_start int := 100000000;
+--consider rewriting this to avoid using exceptions
+BEGIN
+--contours hack 2->1
+--if layername like '%contour%' then
+--	seqname := 'contour_ufid_seq';
+--end if;
+if final then
+	seqname = fseq;
+	seqstart = fseq_start;
+else
+	seqname = tseq;
+	seqstart = tseq_start;
+end if;
+
+raise notice '::: get seq num for layer %',layername;
+begin
+	execute 'select nextval('''||seqname||''')' into res;
+exception when others then
+	raise notice '::: Exception getting sequence value %',seqname;
+	execute 'select ufid_seqinit('''||seqname||''','||seqstart||')';
+	execute 'select nextval('''||seqname||''')' into res;
+end;
+raise notice '::: have new seq num %',res;
+return res;
+END
+$BODY$
+LANGUAGE plpgsql VOLATILE;
+-- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- 
+CREATE OR REPLACE FUNCTION ufid_seqinit(seqname text, startval int) returns void as
+$BODY$
+declare
+cs text;
+
+BEGIN
+raise notice '::: seq % start at %',seqname,startval;
+if not exists (select 0 from pg_class where relname = seqname) then 
+	execute 'create sequence '||seqname||' start '||startval; 
+	execute 'grant all on table '||seqname||' to public';
+end if;
+
+END
+$BODY$
+LANGUAGE plpgsql VOLATILE;
+
+-- ---------------------------------------------------------------------------
+
+-- select assemble_ufid_components(array[10724173.0000000,10724195.000000]::int[],'new_snow_poly','ufid')
+CREATE OR REPLACE FUNCTION assemble_ufid_components(flist int[],layer character varying,pkey text) RETURNS int[] AS
+-- Append UFID's together
+$BODY$
+DECLARE 
+ufid int;
+composite int[] := array[]::int[];
+res int[];
+q text; 
+BEGIN
+foreach ufid in array flist
+loop
+	execute 'select ufid_components::int[] from '||layer||' where '||pkey||'='||ufid into res;
+	composite = array_cat(composite,res); 
+	--raise notice 'compo %',composite;
+end loop;
+
+return composite;
+END
+$BODY$
+LANGUAGE plpgsql VOLATILE;
+
 
 CREATE OR REPLACE FUNCTION rbl_assign_final_ufid(interim text, pkey text) RETURNS void AS
 -- replace temporary sequence numbers with final versions and reset the temp generator
@@ -702,7 +611,7 @@ tseq_start int := 99900000;
 
 BEGIN
 --replace ids when greater than tseq_start (and less than fseq_start? not needed since composites are not in source)
---execute 'select ufid_generator(ufid_components, '''||fseq||''',True) from '||interim||' where '||pkey||' >= '||tseq_start||' into res;
+
 qupd = 'update '||interim||' set '||pkey||' = ufid_generator(ufid_components, '''||fseq||''',True) where '||pkey||' >= '||tseq_start;
 
 --qalt = 'alter sequence if exists '||tseq||' restart with '||tseq_start;
@@ -765,16 +674,23 @@ return res;
 END
 $BODY$
 LANGUAGE plpgsql VOLATILE;
+
 -- ---------------------------------------------------------------------------
+-- REBLOCK
+
 -- args
+-- original = orig table name
 -- src_table = source table being queries, eg. original_vector_layer
+-- pkey = primary-key/ufid name
 -- op = operation : {st_union,st_memunion}
 -- touch = indicator for line/poly table type for setting ST_Relate intersection parameter : {FF2F11212,FF1F00102} and whether ST_SnapToGrid is used
 -- bndry = table to crop against, ie cropregions
 -- region = crop region selector : {northisland, southisland}
 -- dst_table = merged table, eg. new_vector_layer
 -- firstpass = flag to indicate new table creation or array initialisation
+
 CREATE OR REPLACE FUNCTION reblockfaster(original text,src_table text,pkey text,op text,touch boolean,bndry text, region text,dst_table text,firstpass boolean) RETURNS boolean AS
+-- work function that does the physical reblocking, merging cross sheet blocks and unioning with unaffected featured 
 $BODY$
 DECLARE
 res character varying;
@@ -806,7 +722,7 @@ arbt TEXT := 'aggregatedreblocklist_'||dst_table;
 msg text := 'Mapsheet boundary-join error for table '||dst_table;
 
 -- snap to grid size to identify merge candidates. Set this large to capture intended merges
-stg_id double precision := 1e-11;--1e-11 works for GBI
+stg_id double precision := 1e-11; --1e-11 works for Great Barrier Island mismatch
 
 -- snap to grid size to merge misaligned features (corrects multipoly error @ great barrier) We set this small to minimise error
 stg_mv double precision := 1e-11;
@@ -814,7 +730,6 @@ stg_mv double precision := 1e-11;
 BEGIN
 
 q0 = 'drop table if exists '||rbt||';drop table if exists '||arbt||';drop table if exists '||dst_table;
---execute q0 as res;
 
 --select all optional columns
 noidgeo = trail(array_to_string(array(select '((t1.'||c.column_name||' is null and t2.'||c.column_name||' is null) or t1.'||c.column_name||' = t2.'||c.column_name||')'
@@ -869,7 +784,6 @@ end if;
 q5 = 'insert into '||dst_table
 || ' with splitmerge as ('
 || ' 	select ufid_generator(jointab.ufid_components,'''||original||''',False) '||pkey||',* from ('
---|| ' 	select ufid_generator(jointab.ufid_components,jointab.wkb_geometry, False) '||pkey||',* from ('
 || ' 		select max(mergetab.ogc_fid) as ogc_fid, ' || coltext2 || ufidc2 || op
 || '		(array_agg(st_snaptogrid(wkb_geometry,'||quote_literal(stg_mv)||closeb||'))) as wkb_geometry' 
 || '		from ( '
@@ -902,3 +816,123 @@ RETURN True;
 END
 $BODY$
 LANGUAGE plpgsql VOLATILE;
+
+-- ---------------------------------------------------------------------------
+-- DEFUNCT
+-- ---------------------------------------------------------------------------
+-- SQL Funcs to manipulate geometries as TEXT
+-- triple bypass runs too slowly to be useful
+--CREATE OR REPLACE FUNCTION loop_removal(geometry) RETURNS geometry AS
+        -- Removes loops in multilinestrings by finding and deleting instances of ML((...),(A,b,c,d,A),(...))
+--'select ST_LineMerge(ST_GeomFromText(regexp_replace(regexp_replace(ST_AsText($1),''\((\d+\.*\d*\s\d+\.*\d*),[\s\d,.]*\1\),*'',''''),'',\)'','''')));'
+--LANGUAGE sql VOLATILE;
+
+-- ---------------------------------------------------------------------------
+
+--CREATE OR REPLACE FUNCTION triple_bypass(geometry) RETURNS geometry AS
+        -- Strips one of 3x duplicate coordinates from MLS. This is VERY slow 
+--'select ST_LineMerge(ST_GeomFromText(regexp_replace(regexp_replace(ST_AsText($1),(regexp_matches(ST_AsText($1),''(\d+\.*\d*\s\d+\.*\d*).+\1.+\1'',''g''))[1]||'','',''''),'',\)'','')'')));'
+--LANGUAGE sql VOLATILE;
+
+
+--select regexp_replace('FUNC((1.0 2.0, 1.0 3.0, 1.0 4.0), (1.0 2.0, 1.0 5.0), (2.0 3.0, 3.0 4.0, 1.0 2.0))','(\d+\.\d+\s\d+\.\d+)(?=.+\1.+\1)','XXX');
+--select regexp_matches('FUNC((1.0 2.0, 1.0 3.0, 1.0 4.0), (1.0 2.0, 1.0 5.0), (2.0 3.0, 3.0 4.0, 1.0 2.0))','(\d+\.\d+\s\d+\.\d+).+\1.+\1','g');
+-- ---------------------------------------------------------------------------
+
+
+--CREATE OR REPLACE FUNCTION ufid_changedetect(ufid int,layer1 text, layer2 text,pkey text) RETURNS boolean AS
+-- Detects wheteher a particular feature has changed or not
+--$BODY$
+--DECLARe
+--	q0 text;
+--	res boolean;
+--BEGIN
+
+--q0 = 'select l1.g != l2.g from'
+--|| ' (select md5(wkb_geometry::text) md5g, wkb_geometry::text g from '||layer1||' where '||pkey||'='||ufid||') l1,'
+--|| ' (select md5(wkb_geometry::text) md5g, wkb_geometry::text g from '||layer2||' where '||pkey||'='||ufid||') l2';
+-- --raise notice 'cd %',q0;
+--execute q0 into res;
+--RETURN res;
+--END
+--$BODY$
+--LANGUAGE plpgsql VOLATILE;
+
+
+
+
+-- ----------------------------------------------------------------------------
+-- --select reblockclean();
+-- CREATE OR REPLACE FUNCTION reblockclean() RETURNS boolean AS
+-- --Temporary function to delete test tables. *Remove for production
+--$BODY$
+--DECLARE
+--	res boolean;
+--	q1 TEXT;
+--	rc int;
+--	layer character varying;
+--	gtype character varying;
+--	schma character varying := 'public';
+--	xtabl character varying := 'spatial_ref_sys';
+--	threshold int := 150000;
+--	boundary text := 'cropregions';
+--BEGIN
+--	q1 = 'select tablename'
+--	|| ' from pg_tables'
+--	|| ' where schemaname = '||quote_literal(schma)
+--	--|| ' and tablename like '||quote_literal('%_poly')
+--	--|| ' and not tablename like '||quote_literal('new_%')||' and not tablename like '||quote_literal('northisland%')|| ' and not tablename like '||quote_literal('southisland%')|| ' and not tablename like '||quote_literal('reblocklist%')|| ' and not tablename like '||quote_literal('aggregatedreblocklist%')
+--	|| ' and not tablename like ''spatial_ref_sys'' and not tablename like ''cropregions'''
+--	|| ' order by tablename';
+--	for layer in execute q1
+--	loop
+--		--execute 'select GeometryType(wkb_geometry::geometry) from '||quote_ident(layer) into gtype;
+--		--if gtype in ('POLYGON','MULTIPOLYGON') then
+--		raise notice 'Removing Temporary tables for Layer %. %',layer,clock_timestamp();
+
+--		execute 'drop table if exists reblocklist_northisland_northsouth_'||quote_ident(layer);
+--		execute 'drop table if exists reblocklist_northisland_eastwest_'||quote_ident(layer);
+--		execute 'drop table if exists reblocklist_southisland_northsouth_'||quote_ident(layer);
+--		execute 'drop table if exists reblocklist_southisland_eastwest_'||quote_ident(layer);
+
+--		execute 'drop table if exists aggregatedreblocklist_northisland_northsouth_'||quote_ident(layer);
+--		execute 'drop table if exists aggregatedreblocklist_northisland_eastwest_'||quote_ident(layer);
+--		execute 'drop table if exists aggregatedreblocklist_southisland_northsouth_'||quote_ident(layer);
+--		execute 'drop table if exists aggregatedreblocklist_southisland_eastwest_'||quote_ident(layer);
+
+--		execute 'drop table if exists northisland_northsouth_'||quote_ident(layer);
+--		execute 'drop table if exists northisland_eastwest_'||quote_ident(layer);
+--		execute 'drop table if exists southisland_northsouth_'||quote_ident(layer);
+--		execute 'drop table if exists southisland_eastwest_'||quote_ident(layer);
+
+--		execute 'drop table if exists new_'||quote_ident(layer);
+--		--execute 'drop table if exists '||quote_ident(layer);
+--		--execute 'truncate table rbl_associations';
+
+--		--end if;
+--	end loop;
+--	raise notice 'Reblock Cleaning Complete. %',clock_timestamp();
+--RETURN True;
+--END
+--$BODY$
+--LANGUAGE plpgsql VOLATILE;
+
+
+-- ----------------------------------------------------------------------------------------------------------------------
+
+
+-- TEST QUERIES
+-- drop sequence topo_rbl_temp_seq; drop sequence topo_rbl_final_seq; truncate rbl_associations;truncate rbl_report;
+-- select reblockall('unknown',array['railway_cl','airport_poly','lake_poly','native_poly'],True)
+-- select reblockall('t50_fid',array['airport_poly'],True)
+-- select reblockall('t50_fid',array['lake_poly'],True)
+-- select reblockall('t50_fid',array['residential_area_poly'],True)
+-- select reblockall('t50_fid',array['coastline'],True)
+-- select reblockall('t50_fid',array['snow_poly'],True)
+-- select reblockall('t50_fid',array['ferry_crossing_cl'],True)
+
+-- select generate_rbl('exotic_poly','northisland','ufid','((t1.N and t2.S) or (t1.S and t2.N))','ogc_fid , ufid , species,','((t1.species is null and t2.species is null) or t1.species = t2.species)')
+-- select generate_rbl('exotic_poly','northisland','ufid','((t1.N and t2.S) or (t1.S and t2.N))',trail('ogc_fid , ufid , species',','),trail('((t1.species is null and t2.species is null) or t1.species = t2.species)','and'))
+
+-- select northsouth(4794000) = select northsouth(5334000) = T
+-- select northsouth(4793000) = select northsouth(366000) = select northsouth(6234000) = select northsouth(5334001) = F

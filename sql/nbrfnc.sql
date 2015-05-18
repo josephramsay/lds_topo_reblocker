@@ -293,6 +293,31 @@ END
 $BODY$
 LANGUAGE plpgsql VOLATILE;
 
+
+CREATE OR REPLACE FUNCTION nonstandard(cc numeric) RETURNS boolean AS
+-- Function returning assessment on whether a coordinate lies on a Non-Standard mapsheet boundary
+$BODY$
+DECLARE
+res boolean;
+nsmsb text := 
+   '5862000,2092000,1144000,1844000,1868000,1436000,5598000,5034000,5826000,5790000,
+	1484000,1500000,5106000,5826000,5973000,1748000,4722000,1620000,4740000,5502000,
+	1084000,2084000,5670000,1528000,1116000,1940000,1916000,6114000,1092000,5598000,
+	4842000,6198000,1892000,5682000,5070000,5502000,6198000,1940000,6006000,5142000,
+	1604000,6114000,5178000,1580000,1868000,1620000,1524000,4878000,1504000,1940000,
+	5937000,5538000,2092000,1740000,1764000,1460000,1964000,1980000,1892000,1700000,
+	5826000,5214000,5718000,5790000,5466000,1644000,5562000,6198000,2036000,5178000,
+	6150000,1716000,4776000,5466000,1844000,1868000,2060000,5502000,5142000,1772000,
+	1120000,1740000,1508000,1916000,1084000,6042000,6150000,5430000,1844000,1596000,
+	5634000,5538000,1956000,1676000,1868000,5634000,1964000,6234000,2012000';
+
+BEGIN
+execute 'select True where array['||nsmsb||']::int[] && array['||cc||'::int]' into res;
+return res;
+END
+$BODY$
+LANGUAGE plpgsql VOLATILE;
+
 -- ---------------------------------------------------------------------------
 -- REBLOCK IDENTIFY
 
@@ -310,7 +335,10 @@ nsewfilter character varying;
 nsbound character varying := '((t1.N and t2.S and t1.Nv=t2.Sv) or (t1.S and t2.N and t1.Sv=t2.Nv))';
 nsfilter character varying := '(N and northsouth(Nv)) or (S and northsouth(Sv))';
 ewbound character varying := '((t1.E and t2.W and t1.Ev=t2.Wv) or (t1.W and t2.E and t1.Wv=t2.Ev))';
-ewfilter character varying := '(E and eastwest(Ev)) or (W and eastwest(Wv))'; 
+ewfilter character varying := '(E and eastwest(Ev)) or (W and eastwest(Wv))';
+
+nsxxfilt character varying := 'nonstandard(Ev) or nonstandard(Wv)';
+ewxxfilt character varying := 'nonstandard(Nv) or nonstandard(Sv)';
 
 snapgrid text;
 snapgridon text := 'st_snaptogrid(p.wkb_geometry::geometry,'||quote_literal(snap_grid_size)||')';
@@ -326,10 +354,12 @@ BEGIN
 
 if firstpass then 
 	nsewbound = nsbound;
-	nsewfilter = nsfilter;
+	--nsewfilter = nsfilter;
+	nsewfilter = nsfilter||' or '||nsxxfilt;
 else 
 	nsewbound = ewbound;
-	nsewfilter = ewfilter;
+	--nsewfilter = ewfilter;
+	nsewfilter = ewfilter||' or '||ewxxfilt;
 end if;
 
 if touch then
@@ -919,9 +949,50 @@ LANGUAGE plpgsql VOLATILE;
 
 
 -- ----------------------------------------------------------------------------------------------------------------------
+-- UTILITY QUERIES
+-- ----------------------------------------------------------------------------------------------------------------------
+
+-- with 
+-- a as (select sheet_code sc,st_extent(wkb_geometry) e from nz_topo_50_map_sheets group by sheet_code), 
+-- b as (select sc,st_ymax(e) n,st_ymin(e) s,st_xmax(e) e,st_xmin(e) w from a),
+-- c as (
+-- select 'NS' c,sc,n from b where not northsouth(n::numeric) 
+-- union
+-- select 'NS' c,sc,s from b where not northsouth(s::numeric)
+-- union 
+-- select 'EW' c,sc,e from b where not eastwest(e::numeric) 
+-- union
+-- select 'EW' c,sc,w from b where not eastwest(w::numeric) 
+-- )
+-- select array_agg(n) from c 
 
 
+-- select ymx,ymn,xmx,xmn 
+-- from (
+-- 	select 
+-- 		st_ymax(ex) ymx,
+-- 		st_ymin(ex) ymn,
+-- 		st_xmax(ex) xmx,
+-- 		st_xmin(ex) xmn 
+-- 	from (select st_extent(shape) ex from test) extnt
+-- ) coords
+-- where
+-- array[5862000,2092000,1144000,1844000,1868000,1436000,5598000,5034000,5826000,5790000,
+-- 	1484000,1500000,5106000,5826000,5973000,1748000,4722000,1620000,4740000,5502000,
+-- 	1084000,2084000,5670000,1528000,1116000,1940000,1916000,6114000,1092000,5598000,
+-- 	4842000,6198000,1892000,5682000,5070000,5502000,6198000,1940000,6006000,5142000,
+-- 	1604000,6114000,5178000,1580000,1868000,1620000,1524000,4878000,1504000,1940000,
+-- 	5937000,5538000,2092000,1740000,1764000,1460000,1964000,1980000,1892000,1700000,
+-- 	5826000,5214000,5718000,5790000,5466000,1644000,5562000,6198000,2036000,5178000,
+-- 	6150000,1716000,4776000,5466000,1844000,1868000,2060000,5502000,5142000,1772000,
+-- 	1120000,1740000,1508000,1916000,1084000,6042000,6150000,5430000,1844000,1596000,
+-- 	5634000,5538000,1956000,1676000,1868000,5634000,1964000,6234000,2012000
+-- ] && array[ymx::int,ymn::int,xmx::int,xmn::int]
+
+-- ----------------------------------------------------------------------------------------------------------------------
 -- TEST QUERIES
+-- ----------------------------------------------------------------------------------------------------------------------
+
 -- drop sequence topo_rbl_temp_seq; drop sequence topo_rbl_final_seq; truncate rbl_associations;truncate rbl_report;
 -- select reblockall('unknown',array['railway_cl','airport_poly','lake_poly','native_poly'],True)
 -- select reblockall('t50_fid',array['airport_poly'],True)

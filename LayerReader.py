@@ -403,7 +403,7 @@ class SFDS(_DS):
                     layerlist[(dsn,name,srid)] = layer
         return layerlist
     
-    def write(self,layerlist):
+    def write(self,layerlist,cropcolumn=None):
         '''TODO. Write new shp per layer overwriting existing'''
         for dsn in layerlist:
             srcname = re.sub('^new_','',dsn[1])
@@ -413,10 +413,14 @@ class SFDS(_DS):
             if OVERWRITE and os.path.exists(srcfile):
                 self.driver.DeleteDataSource(srcfile)
             dstds = self.driver.CreateDataSource(srcfile)
-            dstds.CopyLayer(layerlist[dsn],srcname,self._getprefs())
+            cpy = dstds.CopyLayer(layerlist[dsn],srcname,self._getprefs())
+            #this section hacked in to add delete column functionality
+            if cropcolumn:
+                col = cpy.GetLayerDefn().GetFieldIndex(cropcolumn)
+                cpy.DeleteField(col)
             
         return layerlist
-            
+    
     def _write(self,layerlist):
         '''TODO. Write new shp per layer overwriting existing'''
         for dsn in layerlist:
@@ -484,11 +488,15 @@ def initds(ds,arg=None):
     return ds(arg) if arg else ds()
     #return ds() if ds.INIT_VAL else None
 
+
+
 def main():
     global OVERWRITE
     global OGR_COPY_PREFS
     global USE_EPSG_WEBSERVICE            
     global ENABLE_VERSIONING
+    
+    switch = False
     
     spath = None
     layer = None
@@ -501,7 +509,7 @@ def main():
     outlayers = []
     
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "hrieposd:l:u:m:wvc", ["help","reload","import","export","process","overwrite","select","dir=","layer=","ufid=","merge=","webservice","version","case"])
+        opts, args = getopt.getopt(sys.argv[1:], "hrieposd:l:u:m:wvcx", ["help","reload","import","export","process","overwrite","select","dir=","layer=","ufid=","merge=","webservice","version","case","excise"])
     except getopt.error, msg:
         print msg
         sys.exit(2)
@@ -551,8 +559,16 @@ def main():
             pass
             #dont do this, bad things happen
             #OGR_COPY_PREFS.append('LAUNDER=NO')
+        if o in ("-x","--excise"):
+            switch = True
+        
+    if switch:
+        crop(spath,ufidname)
+    else:
+        convert(spath,layer,ufidname,actionflag,selectflag,loadcropregions)
+        
             
-            
+def convert(spath,layer,ufidname,actionflag,selectflag,loadcropregions):            
     #actionflag = 2
     #inlayers=['airport_poly','lake_poly','railway_cl']  
           
@@ -598,7 +614,11 @@ def main():
         #inlayers = inlayers if inlayers else [i[i.rfind('/')+1:i.rfind('.')] for i in lr.dst.dsl]
         #outlayers = [k[1] for k in lr.transfer(inlayers if selectflag else layer)]
         
-    
+def crop(spath,ufidname):
+    '''strips out a names column from shapefile'''
+    with SFDS(spath) as sfds:
+        sfds.write(sfds.read(None),ufidname)
+
     
 if __name__ == '__main__':
     main()

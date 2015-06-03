@@ -27,7 +27,8 @@ BEGIN
 	execute 'grant all on table '||rtab||' TO public';
 	execute 'create table if not exists '||atab||' (ts timestamp, layer varchar,ufid int, ufid_components int[])';
 	execute 'grant all on table '||atab||' TO public';
-	execute 'create index on '||atab||' (ufid,ufid_components)';
+	--execute 'create index on '||atab||' (ufid,ufid_components)'; blows out using contours
+	--execute 'create index '||atab||'_idx on '||atab||' using gin (ufid,ufid_components)';gin wont do int/int[] composite
 END
 $BODY$
 LANGUAGE plpgsql VOLATILE;
@@ -312,7 +313,7 @@ nsmsb text :=
 	5634000,5538000,1956000,1676000,1868000,5634000,1964000,6234000,2012000';
 
 BEGIN
-execute 'select True where array['||nsmsb||']::int[] && array['||cc||'::int]' into res;
+execute 'select case when array['||nsmsb||']::int[] && array['||cc||'::int] then True else False end' into res;
 return res;
 END
 $BODY$
@@ -337,8 +338,8 @@ nsfilter character varying := '(N and northsouth(Nv)) or (S and northsouth(Sv))'
 ewbound character varying := '((t1.E and t2.W and t1.Ev=t2.Wv) or (t1.W and t2.E and t1.Wv=t2.Ev))';
 ewfilter character varying := '(E and eastwest(Ev)) or (W and eastwest(Wv))';
 
-nsxxfilt character varying := 'nonstandard(Ev) or nonstandard(Wv)';
-ewxxfilt character varying := 'nonstandard(Nv) or nonstandard(Sv)';
+nsxxfilt character varying := 'nonstandard(Nv) or nonstandard(Sv)';
+ewxxfilt character varying := 'nonstandard(Ev) or nonstandard(Wv)';
 
 snapgrid text;
 snapgridon text := 'st_snaptogrid(p.wkb_geometry::geometry,'||quote_literal(snap_grid_size)||')';

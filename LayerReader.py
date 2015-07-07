@@ -3,12 +3,12 @@ Layer Reader
 Created on 20/10/2014
 @author: jramsay
 
-usage: python LayerReader2 [-h|--help]|[-r|--reset][-i|--import][-e|--export][-p|--process]
+usage: python LayerReader [-h|--help]|[-r|--reset][-i|--import][-e|--export][-p|--process]
             [-d|--dir </shapefile/dir>][-s|--select][-l|--layer <layername>][-o|--overwrite]
             [-u|--ufid <primary-key>][-m|--merge <primary-key>][-w|--webservice][-v|--version]
 -h : Print out this help message
 -r : Reload auxilliary map files 
-    ie CropRegions to subdivide area and utilise less memory when processing
+    i.e. CropRegions to subdivide area and utilise less memory when processing
 -i : Run Shape to PostgreSQL Only
 -e : Run PostgreSQL to Shape Only
 -p : Run Reblocking process Only
@@ -16,10 +16,14 @@ usage: python LayerReader2 [-h|--help]|[-r|--reset][-i|--import][-e|--export][-p
 -s : Only process and export layers found in the import directory
 -d <path> : Specifiy a shapefile import directory
 -l <layer> : Specify a single layer to import/process/export
--u <ufid> : Specify the name of the primary key field for a layer/set-of-layers eg t50_fid/t250_fid
+-u <ufid> : Specify the name of the primary key field for a layer/set-of-layers 
+    e.g. t50_fid/t250_fid
 -m <ufid> : Returns the layers using this composite ID and its components
 -w : Enable Webservice lookup for missing EPSG
 -v : Enable table versioning
+-x : Removed named column from output shapefile
+-r : Release reblocking data to topo_rdb
+-z : Link and Release reblocking data to topo_rdb
 '''
 
 import sys
@@ -228,12 +232,14 @@ class _DS(object):
 class PGDS(_DS):
     INIT_VAL = 1
     DRIVER_NAME = 'PostgreSQL'
+    DBNAME = 'reblock'
     cur = None
     conn = None
     
-    def __init__(self,fname=None):
+    def __init__(self,fname=None,dbn=None):
         super(PGDS,self).__init__()
-        #print 'PGDS',fname
+        if dbn: self.DBNAME = dbn
+        #print 'PGDS',fname,dbn
         if not fname: fname = self.ogrconnstr()
         self.dsl = {fname:self.initalise(fname, True)}
         
@@ -243,7 +249,7 @@ class PGDS(_DS):
         pdef = 5432
         usr,pwd = userpass(PG_CREDS)
         h,p = hostport(PG_CREDS)
-        return {'DBNAME':'reblock','HOST':h if h else hdef,'PORT':p if p else pdef,'USER':usr,'PASS':pwd}
+        return {'DBNAME':self.DBNAME,'HOST':h if h else hdef,'PORT':p if p else pdef,'USER':usr,'PASS':pwd}
     
     def ogrconnstr(self):
         return 'PG:{} active_schema={}'.format(self.connstr(),DST_SCHEMA)
@@ -496,7 +502,7 @@ def main():
     global USE_EPSG_WEBSERVICE            
     global ENABLE_VERSIONING
     
-    switch = False
+    switch = None
     
     spath = None
     layer = None
@@ -509,9 +515,9 @@ def main():
     outlayers = []
     
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "hrieposd:l:u:m:wvcx", ["help","reload","import","export","process","overwrite","select","dir=","layer=","ufid=","merge=","webservice","version","case","excise"])
+        opts, args = getopt.getopt(sys.argv[1:], "hrieposd:l:u:m:wvcxrz", ["help","reload","import","export","process","overwrite","select","dir=","layer=","ufid=","merge=","webservice","version","case","excise","release","linkrelease"])
     except getopt.error, msg:
-        print msg
+        usage(msg)
         sys.exit(2)
     
     #do the help check first
@@ -560,10 +566,18 @@ def main():
             #dont do this, bad things happen
             #OGR_COPY_PREFS.append('LAUNDER=NO')
         if o in ("-x","--excise"):
-            switch = True
+            switch = 'CROP'
+        if o in ("-r","--release"):
+            switch = 'RELEASE'
+        if o in ("-z","--linkrelease"):
+            switch = 'LINKRELEASE'
         
-    if switch:
+    if switch == 'CROP':
         crop(spath,ufidname)
+    elif switch == 'RELEASE':
+        release(link=False)
+    elif switch == 'LINKRELEASE':
+        release(link=True)
     else:
         convert(spath,layer,ufidname,actionflag,selectflag,loadcropregions)
         
@@ -618,7 +632,18 @@ def crop(spath,ufidname):
     '''strips out a names column from shapefile'''
     with SFDS(spath) as sfds:
         sfds.write(sfds.read(None),ufidname)
-
+        
+def release(link=False):
+    '''Links/Releases (reblock->topoview) copy of latest reblock tables for public consumption'''
+    qlist = ('select release_topo_layers()',)
+    if link: qlist = ('select link_topo_layers()',)+qlist
+    with PGDS(dbn='topo_rdb') as pgds:
+        pgds.connect()
+        for qstr in qlist:
+            res = pgds.execute(qstr,results=True)
+    
+def usage(msg):
+    print msg,'\n'+'-'*50,__doc__
     
 if __name__ == '__main__':
     main()

@@ -83,6 +83,7 @@ DECLARE
 	q1 text;	
 	q2 text;
 	q3 text;
+	q4 text;
 	table_name text;
 	new_table text;
 	name_type character varying[];
@@ -97,11 +98,13 @@ BEGIN
 	loop
 		new_table = right(table_name, -length(filter)+1);
 		q2 = 'drop table if exists '||new_table;
-		q3 = 'create table '||right(table_name, -length(filter)+1)||' as select * from '||table_name;
+		q3 = 'create table '||new_table||' as select * from '||table_name;
+		q4 = 'grant select on table '||new_table||' to public';
 		--raise notice '>R2> % / %',q2,q3;
 		
 		execute q2 as res;
 		execute q3 as res;
+		execute q4 as res;
 
 	end loop;
 	

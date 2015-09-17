@@ -1,4 +1,4 @@
---
+﻿--
 -- Reblocking SQL
 -- Version - 1.0
 -- Date - 24-04-2015
@@ -92,7 +92,6 @@ DECLARE
 	
 	changeset text[];
 BEGIN
-	
 	execute 'select rbl_init('||quote_literal(atab)||','||quote_literal(rtab)||')';
 	------------------------------------------------------------------------
 	
@@ -257,7 +256,6 @@ INITCOND=$${}$$
 -- ---------------------------------------------------------------------------
 -- BOUNDARY CHECK
 -- NOTE. Written for Topo50 maps and though not tested with, should also work on Topo250 maps since they use a subset of the Topo50 mapsheet boundaries
-
 CREATE OR REPLACE FUNCTION northsouth(ns numeric) RETURNS boolean AS
 -- Function returning assessment on whether a latitude coordinate lies on a North-South boundary
 $BODY$
@@ -266,12 +264,13 @@ minx int := 131;
 maxx int := 172;
 cnst numeric = 6000;
 step numeric := 36000;
+--extra_ns numeric[] := array[5140000,5104000]; 
 d numeric;
 m numeric;
 BEGIN
 d = div(ns::numeric - cnst, step);
 m = mod(ns::numeric - cnst, step);
-return m=0 and d>minx and d<maxx; 
+return m=0 and d>minx and d<maxx; --or ns = any(extra_ns);
 END
 $BODY$
 LANGUAGE plpgsql VOLATILE;
@@ -284,12 +283,13 @@ minx int := 45;
 maxx int := 87;
 cnst numeric = 4000;
 step numeric := 24000;
+--extra_ew numeric[] := array[3482000,3506000]; 
 d numeric;
 m numeric;
 BEGIN
 d = div(ew::numeric - cnst, step);
 m = mod(ew::numeric - cnst, step);
-return m=0 and d>minx and d<maxx; 
+return m=0 and d>minx and d<maxx; --or ew = any(extra_ew);
 END
 $BODY$
 LANGUAGE plpgsql VOLATILE;

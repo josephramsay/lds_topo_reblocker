@@ -3,28 +3,31 @@ Layer Reader
 Created on 20/10/2014
 @author: jramsay
 
-usage: python LayerReader [-h|--help]|[-r|--reset][-i|--import][-e|--export][-p|--process]
+usage: python LayerReader [-h|--help]|[-c|--cropregion][-i|--import][-e|--export][-p|--process]
             [-d|--dir </shapefile/dir>][-s|--select][-l|--layer <layername>][-o|--overwrite]
             [-u|--ufid <primary-key>][-m|--merge <primary-key>][-w|--webservice][-v|--version]
--h : Print out this help message
--r : Reload auxilliary map files 
+            [-x/-excise][-y/--deepexcise][-r/--release][-z/--linkrelease]
+-h/--help : Print out this help message
+-c/--cropregion : Reload auxilliary map files 
     i.e. CropRegions to subdivide area and utilise less memory when processing
--i : Run Shape to PostgreSQL Only
--e : Run PostgreSQL to Shape Only
--p : Run Reblocking process Only
--o : Overwrite (imported and reblocked tables)
--s : Only process and export layers found in the import directory
--d <path> : Specifiy a shapefile import directory
--l <layer> : Specify a single layer to import/process/export
--u <ufid> : Specify the name of the primary key field for a layer/set-of-layers 
+-i/--import : Run Shape to PostgreSQL Only
+-e/--export : Run PostgreSQL to Shape Only
+-p/--process : Run Reblocking process Only
+-o/--overwrite : Overwrite (imported and reblocked tables)
+-s/--selection : Only process and export layers found in the import directory
+-d/--dir <path> : Specifiy a shapefile import directory
+-l/--layer <layer> : Specify a single layer to import/process/export
+-u/--ufid <ufid> : Specify the name of the primary key field for a layer/set-of-layers 
     e.g. t50_fid/t250_fid
--m <ufid> : Returns the layers using this composite ID and its components
--w : Enable Webservice lookup for missing EPSG
--v : Enable table versioning
--x : Removed named column from output shapefile
--r : Release reblocking data to topo_rdb
--z : Link and Release reblocking data to topo_rdb
+-m/--merge <ufid> : Returns the layers using this composite ID and its components
+-w/--webservice : Enable Webservice lookup for missing EPSG
+-v/--version : Enable table versioning
+-x/--excise : Remove named column from output shapefile
+-y/--deepexcise : Remove named column from output shapefile (including all subdirectories)
+-r/--release : Release reblocking data to topo_rdb
+-z/--linkrelease : Link and Release reblocking data to topo_rdb
 '''
+
 
 import sys
 import os
@@ -48,6 +51,7 @@ DEF_SRS = 2193
 USE_EPSG_WEBSERVICE = False
 DST_SCHEMA = 'public'
 DST_TABLE_PREFIX = 'new_'
+DST_SUBDIR = '_new'
 SHP_SUFFIXES = ('shp','shx','dbf','prj','cpg')
 OGR_COPY_PREFS = ["OVERWRITE=NO","GEOM_TYPE=geometry","ENCODING=UTF-8"]
 
@@ -150,7 +154,7 @@ class _DS(object):
     def _getprefs(self):
         return OGR_COPY_PREFS
         
-    def _findSRID(self,sr,useweb):
+    def _findSRID(self,name,sr,useweb):
         '''https://stackoverflow.com/a/10807867'''
         res = sr.AutoIdentifyEPSG()
         if res == 0:
@@ -158,7 +162,7 @@ class _DS(object):
         elif useweb:
             res = self._lookupSRID(sr.ExportToWkt())
             if res: return res
-        print 'Using DEF_SRS {0}'.format(DEF_SRS)    
+        print 'Warning. Layer {0} using DEF_SRS {1}'.format(name,DEF_SRS)    
         return DEF_SRS
             
     def _lookupSRID(self,wkt):
@@ -282,14 +286,14 @@ class PGDS(_DS):
                 name = layer.GetLayerDefn().GetName()
                 if name.find(DST_TABLE_PREFIX)==0 \
                 and self._tname(name):
-                    #checks if name is part of in any if the filter items
-                    if not filt or max([1 if f in name else 0 for f in filt])>0: 
-                        srid = self._findSRID(layer.GetSpatialRef(),USE_EPSG_WEBSERVICE)
+                    #checks if (table)name is part of or in any of the filter items
+                    if not filt or max([1 if DST_TABLE_PREFIX+f==name else 0 for f in filt])>0: 
+                        srid = self._findSRID(name,layer.GetSpatialRef(),USE_EPSG_WEBSERVICE)
                         layerlist[(dsn,name,srid)] = layer
         return layerlist
     
     def _tname(self,name):
-        '''Shortcut to add list of tables for export'''
+        '''Debugging shortcut to add list of tables for export'''
         return True
         return name.find('new_contour')==0
      
@@ -405,36 +409,35 @@ class SFDS(_DS):
                 name = layer.GetLayerDefn().GetName()
                 #checks if name is part of in any if the filter items
                 if not filt or max([1 if f in name else 0 for f in filt])>0: 
-                    srid = self._findSRID(layer.GetSpatialRef(),USE_EPSG_WEBSERVICE)
+                    srid = self._findSRID(name,layer.GetSpatialRef(),USE_EPSG_WEBSERVICE)
                     layerlist[(dsn,name,srid)] = layer
         return layerlist
     
     def write(self,layerlist,cropcolumn=None):
         '''TODO. Write new shp per layer overwriting existing'''
         for dsn in layerlist:
-            srcname = re.sub('^new_','',dsn[1])
-            srcpath = os.path.abspath(self.shppath[0]+'_new')
+            srcname = re.sub('^'+DST_TABLE_PREFIX,'',dsn[1])
+            srcpath = os.path.abspath(self.shppath[0]+DST_SUBDIR)
             srcfile = os.path.abspath(os.path.join(srcpath,srcname+'.shp'))
             if not os.path.exists(srcpath): os.mkdir(srcpath)
-            if OVERWRITE and os.path.exists(srcfile):
-                self.driver.DeleteDataSource(srcfile)
+            if os.path.exists(srcfile): self.driver.DeleteDataSource(srcfile)
             dstds = self.driver.CreateDataSource(srcfile)
             cpy = dstds.CopyLayer(layerlist[dsn],srcname,self._getprefs())
             #this section hacked in to add delete column functionality
             if cropcolumn:
                 col = cpy.GetLayerDefn().GetFieldIndex(cropcolumn)
                 cpy.DeleteField(col)
-            
+            dstds.Destroy()
         return layerlist
     
     def _write(self,layerlist):
-        '''TODO. Write new shp per layer overwriting existing'''
+        '''Alternative shape writer'''
         for dsn in layerlist:
             #dsn = ("PG:dbname='reblock' host='127.0.0.1' port='5432' active_schema=public", 'new_native_poly')
             #srcname = dsn[1].split('.')[-1]
-            srcname = re.sub('^new_','',dsn[1])
+            srcname = re.sub('^'+DST_TABLE_PREFIX,'',dsn[1])
             #srcfile = os.path.abspath(os.path.join(self.shppath[0],'..'))#,srcname+'.shp'))
-            srcfile = os.path.abspath(self.shppath[0]+'_new')#,srcname+'.shp'))
+            srcfile = os.path.abspath(self.shppath[0]+DST_SUBDIR)#,srcname+'.shp'))
             if not os.path.exists(srcfile): os.mkdir(srcfile)
             #srcsrs = layerlist[dsn].GetSpatialRef()
             if OVERWRITE:
@@ -515,7 +518,7 @@ def main():
     outlayers = []
     
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "hrieposd:l:u:m:wvcxrz", ["help","reload","import","export","process","overwrite","select","dir=","layer=","ufid=","merge=","webservice","version","case","excise","release","linkrelease"])
+        opts, args = getopt.getopt(sys.argv[1:], "hcieposd:l:u:m:wvnxyrz", ["help","cropregion","import","export","process","overwrite","selection","dir=","layer=","ufid=","merge=","webservice","version","nolaunder","excise","deepexcise","release","linkrelease"])
     except getopt.error, msg:
         usage(msg)
         sys.exit(2)
@@ -530,7 +533,7 @@ def main():
         if o in ("-h", "--help"):
             print __doc__
             sys.exit(0)
-        if o in ("-r", "--reload"):
+        if o in ("-c", "--cropregion"):
             loadcropregions = True        
         if o in ("-i", "--import"):
             actionflag = 1        
@@ -545,7 +548,7 @@ def main():
             selectflag = True
         if o in ("-d", "--dir"):
             spath = a
-            print 'setting spath',spath
+            print 'Setting spath to:',spath
         if o in ("-l", "--layer"):
             layer = [a,]
         if o in ("-u", "--ufid"):
@@ -561,12 +564,14 @@ def main():
             USE_EPSG_WEBSERVICE = True
         if o in ("-v", "--version"):
             ENABLE_VERSIONING = True
-        if o in ("-c","--case"):
+        if o in ("-n","--nolaunder"):
             pass
             #dont do this, bad things happen
             #OGR_COPY_PREFS.append('LAUNDER=NO')
         if o in ("-x","--excise"):
             switch = 'CROP'
+        if o in ("-y","--deepexcise"):
+            switch = 'DEEPCROP'
         if o in ("-r","--release"):
             switch = 'RELEASE'
         if o in ("-z","--linkrelease"):
@@ -574,6 +579,8 @@ def main():
         
     if switch == 'CROP':
         crop(spath,ufidname)
+    elif switch == 'DEEPCROP':
+        deepcrop(spath,ufidname)
     elif switch == 'RELEASE':
         release(link=False)
     elif switch == 'LINKRELEASE':
@@ -585,6 +592,7 @@ def main():
 def convert(spath,layer,ufidname,actionflag,selectflag,loadcropregions):            
     #actionflag = 2
     #inlayers=['airport_poly','lake_poly','railway_cl']  
+    inlayers = ()
           
     if ENABLE_VERSIONING:
         PXDS = PGDS_Version
@@ -628,6 +636,11 @@ def convert(spath,layer,ufidname,actionflag,selectflag,loadcropregions):
         #inlayers = inlayers if inlayers else [i[i.rfind('/')+1:i.rfind('.')] for i in lr.dst.dsl]
         #outlayers = [k[1] for k in lr.transfer(inlayers if selectflag else layer)]
         
+def deepcrop(spath,ufidname):
+    '''Does a fid crop on a directory incl subs'''
+    for (sub, _, _) in os.walk(spath):
+        if not re.search(DST_SUBDIR,sub): crop(sub,ufidname)
+    
 def crop(spath,ufidname):
     '''strips out a names column from shapefile'''
     with SFDS(spath) as sfds:
@@ -641,7 +654,9 @@ def release(link=False):
         pgds.connect()
         for qstr in qlist:
             res = pgds.execute(qstr,results=True)
-    
+            print 'Release return code for "{}" = {}'.format(qstr,res if res else 'OK')
+        pgds.disconnect()
+            
 def usage(msg):
     print msg,'\n'+'-'*50,__doc__
     

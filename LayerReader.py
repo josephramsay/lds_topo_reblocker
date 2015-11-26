@@ -55,6 +55,10 @@ DST_SUBDIR = '_new'
 SHP_SUFFIXES = ('shp','shx','dbf','prj','cpg')
 OGR_COPY_PREFS = ["OVERWRITE=NO","GEOM_TYPE=geometry","ENCODING=UTF-8"]
 
+DEF_CREDS = '.pdb_credentials'
+DEF_HOST = '127.0.0.1'
+DEF_PORT = 5432
+
 if re.search('posix',os.name):
     DEF_SHAPE_PATH = ('/home/',)
 else:
@@ -248,12 +252,9 @@ class PGDS(_DS):
         self.dsl = {fname:self.initalise(fname, True)}
         
     def _getopts(self):
-        PG_CREDS = '.pdb_credentials'
-        hdef = '127.0.0.1'
-        pdef = 5432
-        usr,pwd = userpass(PG_CREDS)
-        h,p = hostport(PG_CREDS)
-        return {'DBNAME':self.DBNAME,'HOST':h if h else hdef,'PORT':p if p else pdef,'USER':usr,'PASS':pwd}
+        usr,pwd = CredsLib.userpass(DEF_CREDS)
+        h,p = CredsLib.hostport(DEF_CREDS)
+        return {'DBNAME':self.DBNAME,'HOST':h if h else DEF_HOST,'PORT':p if p else DEF_PORT,'USER':usr,'PASS':pwd}
     
     def ogrconnstr(self):
         return 'PG:{} active_schema={}'.format(self.connstr(),DST_SCHEMA)
@@ -472,25 +473,27 @@ class Reporter(object):
         
 #   -----------------------------------------------------------------------------------------------
 
-def userpass(upfile):
-    return (searchfile(upfile,'username'),searchfile(upfile,'password'))
-
-def hostport(upfile):
-    return (searchfile(upfile,'host'),searchfile(upfile,'port'))
-
-def apikey(kfile):
-    return searchfile(kfile,'key')
-
-def creds(cfile):
-    '''Read CIFS credentials file'''
-    return (searchfile(cfile,'username'),searchfile(cfile,'password'),searchfile(cfile,'domain','WGRP'))
-
-def searchfile(sfile,skey,default=None):
-    with open(sfile,'r') as h:
-        for line in h.readlines():
-            k = re.search('^{key}=(.*)$'.format(key=skey),line)
-            if k: return k.group(1)
-    return default
+class CredsLib(object):
+    @classmethod
+    def userpass(cls,upfile):
+        return (cls.searchfile(upfile,'username'),cls.searchfile(upfile,'password'))
+    @classmethod
+    def hostport(cls,upfile):
+        return (cls.searchfile(upfile,'host'),cls.searchfile(upfile,'port'))
+    @classmethod
+    def apikey(cls,kfile):
+        return cls.searchfile(kfile,'key')
+    @classmethod
+    def creds(cls,cfile):
+        '''Read CIFS credentials file'''
+        return (cls.searchfile(cfile,'username'),cls.searchfile(cfile,'password'),cls.searchfile(cfile,'domain','WGRP'))
+    @classmethod
+    def searchfile(cls,sfile,skey,default=None):
+        with open(sfile,'r') as h:
+            for line in h.readlines():
+                k = re.search('^{key}=(.*)$'.format(key=skey),line)
+                if k: return k.group(1)
+        return default
 
 def initds(ds,arg=None):
     '''load an initial DS (for example a postgres connection) if required'''

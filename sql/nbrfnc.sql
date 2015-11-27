@@ -527,7 +527,9 @@ q1 = 'with latest as ('
 || ' from '||atab||' ta'
 || ' join latest l '
 || ' on l.mts = ta.ts'
-|| ' where ufid_components::int[]='||quote_literal(flist)||'::int[]';
+|| ' where ufid_components::int[]='||quote_literal(flist)||'::int[]'
+|| ' limit 1';
+-- limit added to prevent multiplie ufid being returned for identical timestamps 
 --|| ' and layer like '''||quote_ident(ctab)||'''';
 
 raise notice '::: checking for existing ufid for flist %',quote_literal(flist);

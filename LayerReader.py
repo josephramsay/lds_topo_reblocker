@@ -35,10 +35,21 @@ import re
 import getopt
 import psycopg2
 import urllib
-import urllib2
 import json
 import shutil
-from urllib2 import HTTPError
+
+
+PYVER3 = sys.version_info > (3,)
+
+#2 to 3 imports
+if PYVER3:
+    import urllib.request as u_lib
+    from urllib.error import HTTPError
+else:
+    import urllib2 as u_lib
+    from urllib2 import HTTPError
+    pass
+
 
 try:
     import ogr
@@ -63,6 +74,13 @@ if re.search('posix',os.name):
     DEF_SHAPE_PATH = ('/home/',)
 else:
     DEF_SHAPE_PATH = ('C:\\',)
+    
+    
+def setOverwrite(o):
+    global OVERWRITE
+    OVERWRITE = o
+    global OGR_COPY_PREFS
+    OGR_COPY_PREFS[0] = 'OVERWRITE={}'.format('YES' if o else 'NO')
     
 class LayerReader(object):
     _src = None
@@ -101,7 +119,7 @@ class LayerReader(object):
         '''Removes non majority features from layer. If #1 LINE and #10 POLYs in layer, remove the LINE'''
         for f in self.geomatch(layer):
             layer.DeleteFeature(f.GetFID())
-            print 'DELETE FID {} (ufid={}) from Layer {}'.format(f.GetFID(),f.GetFieldAsInteger(pkey),layer.GetLayerDefn().GetName())
+            print ('DELETE FID {} (ufid={}) from Layer {}'.format(f.GetFID(),f.GetFieldAsInteger(pkey),layer.GetLayerDefn().GetName()))
         return layer
         
     def geomatch(self,layer):
@@ -166,32 +184,32 @@ class _DS(object):
         elif useweb:
             res = self._lookupSRID(sr.ExportToWkt())
             if res: return res
-        print 'Warning. Layer {0} using DEF_SRS {1}'.format(name,DEF_SRS)    
+        print ('Warning. Layer {0} using DEF_SRS {1}'.format(name,DEF_SRS))    
         return DEF_SRS
-            
-    def _lookupSRID(self,wkt):
+
+    def _lookupSRID(self,wkt): 
         uu='http://prj2epsg.org/search.json?mode=wkt&terms='
-    
+
         purl='127.0.0.1:3128'
         puser=None
         ppass=None
         pscheme="http"
         
-        uuwkt = uu+urllib.quote(wkt)
+        uuwkt = uu + u_lib.quote(wkt)
         
         handlers = [
-                urllib2.HTTPHandler(),
-                urllib2.HTTPSHandler(),
-                urllib2.ProxyHandler({pscheme: purl})
+                u_lib.HTTPHandler(),
+                u_lib.HTTPSHandler(),
+                u_lib.ProxyHandler({pscheme: purl})
             ]
-        opener = urllib2.build_opener(*handlers)
-        urllib2.install_opener(opener)
+        opener = u_lib.build_opener(*handlers)
+        u_lib.install_opener(opener)
         
         try:
-            res = urllib2.urlopen(uuwkt)
+            res = u_lib.urlopen(uuwkt)
             return int(json.loads(res.read())['codes'][0]['code'])
         except HTTPError as he:
-            print 'SRS WS Convert Error {0}'.format(he)
+            print ('SRS WS Convert Error {0}'.format(he))
         
     
     def initalise(self,dsn=None,create=True):
@@ -307,7 +325,7 @@ class PGDS(_DS):
         self.connect()
         for dsn in layerlist:
             #print 'PG create layer {}'.format(dsn[1])
-            self.dsl.values()[0].CopyLayer(layerlist[dsn],dsn[1],self._getprefs())
+            list(self.dsl.values())[0].CopyLayer(layerlist[dsn],dsn[1],self._getprefs())
             '''HACK to set SRS'''
             q = "select UpdateGeometrySRID('{}','wkb_geometry',{})".format(dsn[1].lower(),dsn[2])
             res = self.execute(q)
@@ -335,7 +353,7 @@ class PGDS(_DS):
                 try:
                     dstlayer.CreateFeature(feature)
                 except ValueError as ve:
-                    print 'Error Creating Feature on Layer {}. {}'.format(dsn[1],ve)
+                    print ('Error Creating Feature on Layer {}. {}'.format(dsn[1],ve))
                     
         return layerlist
         
@@ -468,7 +486,7 @@ class Reporter(object):
             res = pgds.execute(qstr,results=True)
             
         for line in res:
-            print 'ID {} in Layer {} contains segments {}  -  (constructed on {})'.format(id,line[1],line[2],line[0])
+            print ('ID {} in Layer {} contains segments {}  -  (constructed on {})'.format(id,line[1],line[2],line[0]))
         
         
 #   -----------------------------------------------------------------------------------------------
@@ -522,19 +540,19 @@ def main():
     
     try:
         opts, args = getopt.getopt(sys.argv[1:], "hcieposd:l:u:m:wvnxyrz", ["help","cropregion","import","export","process","overwrite","selection","dir=","layer=","ufid=","merge=","webservice","version","nolaunder","excise","deepexcise","release","linkrelease"])
-    except getopt.error, msg:
+    except getopt.error as msg:
         usage(msg)
         sys.exit(2)
     
     #do the help check first
     if any([True for i in opts if re.search('-h',i[0])]):
-        print __doc__
+        print (__doc__)
         sys.exit(0)
         
     #opts
     for o, a in opts:
         if o in ("-h", "--help"):
-            print __doc__
+            print (__doc__)
             sys.exit(0)
         if o in ("-c", "--cropregion"):
             loadcropregions = True        
@@ -551,13 +569,13 @@ def main():
             selectflag = True
         if o in ("-d", "--dir"):
             spath = a
-            print 'Setting spath to:',spath
+            print ('Setting spath to:',spath)
         if o in ("-l", "--layer"):
             layer = [a,]
         if o in ("-u", "--ufid"):
             if not a.islower():
                 ufidname = a.lower()
-                print 'Converting UC "{}" FID to LC "{}"'.format(a,ufidname)
+                print ('Converting UC "{}" FID to LC "{}"'.format(a,ufidname))
             else: ufidname = a
         if o in ("-m","--merged"):
             r = Reporter()
@@ -609,7 +627,7 @@ def convert(spath,layer,ufidname,actionflag,selectflag,loadcropregions):
              
     #read shapefiles into DB and call reblocker 
     if actionflag & 1:
-        print 'Transfer Shape -> PostgreSQL'
+        print ('Transfer Shape -> PostgreSQL')
         with SFDS(spath) as sfds:
             with PXDS() as pxds:
                 lr = LayerReader(sfds,pxds)
@@ -618,7 +636,7 @@ def convert(spath,layer,ufidname,actionflag,selectflag,loadcropregions):
         #inlayers = [k[1] for k in lr.transfer(layer)]
     
     if actionflag & 4:
-        print 'Reblock PG Layers'
+        print ('Reblock PG Layers')
         with PXDS() as pxds:
             lr = LayerReader(None,pxds)
             lchoose = layer if layer else (inlayers if selectflag else None)
@@ -629,7 +647,7 @@ def convert(spath,layer,ufidname,actionflag,selectflag,loadcropregions):
         
     #write reblocked tables out to shapefile
     if actionflag & 2:
-        print 'Transfer PostgreSQL -> Shape'
+        print ('Transfer PostgreSQL -> Shape')
         with SFDS(spath) as sfds:
             with PXDS() as pxds:
                 lr = LayerReader(pxds,sfds)
@@ -657,11 +675,11 @@ def release(link=False):
         pgds.connect()
         for qstr in qlist:
             res = pgds.execute(qstr,results=True)
-            print 'Release return code for "{}" = {}'.format(qstr,res if res else 'OK')
+            print ('Release return code for "{}" = {}'.format(qstr,res or 'OK'))
         pgds.disconnect()
             
 def usage(msg):
-    print msg,'\n'+'-'*50,__doc__
+    print (msg,'\n'+'-'*50,__doc__)
     
 if __name__ == '__main__':
     main()

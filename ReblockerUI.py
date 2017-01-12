@@ -8,6 +8,12 @@ import os
 import sys
 import logging     
 
+#from KPCInterface import KPCUploader as KU
+
+THISF = os.path.normpath(os.path.dirname(__file__))
+sys.path.append(os.path.abspath(os.path.join(THISF,'../LDS/LDSAPI')))
+#sys.path.append(os.path.abspath("../LDSAPI"))
+
 from KPCInterface import KPCUploader as KU
 
 import LayerReader as LR
@@ -17,14 +23,14 @@ PYVER3 = sys.version_info > (3,)
 #2 to 3 imports
 if PYVER3:
     import tkinter as TK
-    import tkinter.scrolledtext as ScrolledText
-    from tkinter.constants import RAISED,SUNKEN,BOTTOM,RIGHT,LEFT,END,X,Y,W,E,N,S,ACTIVE  
+    from tkinter.scrolledtext import ScrolledText
+    from tkinter.constants import FLAT,RAISED,SUNKEN,TOP,BOTTOM,RIGHT,LEFT,BOTH,END,X,Y,W,E,N,S,ACTIVE  
     import tkinter.filedialog as FD
 else:
-    #import Tkinter as TK 
-    #from ScrolledText import ScrolledText
-    #from Tkconstants import RAISED,SUNKEN,BOTTOM,RIGHT,LEFT,END,X,Y,W,E,N,S,ACTIVE  
-    #2import tkFileDialog as FD
+    import Tkinter as TK 
+    from ScrolledText import ScrolledText
+    from Tkconstants import FLAT,RAISED,SUNKEN,TOP,BOTTOM,RIGHT,LEFT,BOTH,END,X,Y,W,E,N,S,ACTIVE  
+    import tkFileDialog as FD
     pass
     
 # "hcieposd:l:u:m:wvnxyrz", 
@@ -61,7 +67,7 @@ usage: python LayerReader [-h|--help]|[-c|--cropregion][-i|--import][-e|--export
 #ADD 
 #1.Reload_Index option to fetch new list of layers
 if os.name =='posix':
-    DEF_PATH = '/home/jramsay/temp/toposhp/UITest/poly/sf_new'
+    DEF_PATH = '/home/jramsay/temp/toposhp/bp'
 else: 
     DEF_PATH = 'C:\\Data\\'
 
@@ -88,98 +94,132 @@ class RUI(object):
     dirname = DEF_PATH
     
     def __init__(self, master=None):
-        master = TK.Tk()
-        master.wm_title('ReblockerUI')
-        self.mainframe = TK.Frame(master,height=100,width=100,bd=1,relief=RAISED)
-        #mainframe.__init__(self, master)
-        self.mainframe.grid()
+        self.master = TK.Tk()
+        self.master.wm_title('ReblockerUI')
+        
+        self.menubar = TK.Menu(self.master)
+
+        self.buttonframe  = TK.Frame(self.master,height=10,width=100,bd=2,relief=FLAT)
+        self.controlframe = TK.Frame(self.master,height=20,width=100,bd=2,relief=FLAT)
+        self.inputframe   = TK.Frame(self.controlframe,height=20,width=50, bd=2,relief=FLAT)
+        self.checkframe   = TK.Frame(self.controlframe,height=20,width=50, bd=2,relief=FLAT)
+        self.logframe     = TK.Frame(self.master,height=80,width=100, bd=2,relief=SUNKEN)    
+        
+        self.buttonframe.pack(fill=X,side=BOTTOM)
+        self.controlframe.pack(fill=X)
+        self.inputframe.pack(side=LEFT,fill=BOTH)
+        self.checkframe.pack(side=RIGHT)
+        self.logframe.pack(fill=X,side=TOP)
+        
+        self.initMenus()
         self.initWidgets()
-        self._offset(master)
-        self.mainframe.mainloop()
+        self._offset(self.master)
+        self.master.config(menu=self.menubar)
+        self.master.mainloop()
 
+    def initMenus(self):
+        filemenu = TK.Menu(self.menubar, tearoff=0)
+        filemenu.add_command(label="Select", command=self.select)
+        filemenu.add_separator()
+        filemenu.add_command(label="Exit", command=self.quit)
+        self.menubar.add_cascade(label="File", menu=filemenu)
+        
+        actionmenu = TK.Menu(self.menubar, tearoff=0)
+        actionmenu.add_command(label="Reblock", command=self.reblock)
+        self.menubar.add_cascade(label="Action", menu=actionmenu)
+        
     def initWidgets(self):
-        button_row = 4
+        button_row = 0
+        button_col = 0
         log_row = 5
+        input_row = 0
         group_options = sorted(KU.SOURCE_DEFS.keys(),reverse=True)
-        #B U T T O N
-        self.mainframe.selectbt = TK.Button(self.mainframe,  text='Select',  command=self.select)
-        self.mainframe.selectbt.grid( row=button_row,column=0,sticky=E)
+        
+        #B U T T O N        
+        self.buttonframe.selectbt = TK.Button(self.buttonframe,  text='Select',  command=self.select)
+        self.buttonframe.selectbt.grid( row=button_row,column=button_col+0,sticky=E)
   
-        self.mainframe.reblockbt = TK.Button(self.mainframe, text='Reblock', command=self.reblock)
-        self.mainframe.reblockbt.grid(row=button_row,column=1,sticky=E)
+        self.buttonframe.reblockbt = TK.Button(self.buttonframe, text='Reblock', command=self.reblock)
+        self.buttonframe.reblockbt.grid(row=button_row,column=button_col+1,sticky=E)
  
-        self.mainframe.uploadbt = TK.Button(self.mainframe,  text='Upload',  command=self.upload)
-        self.mainframe.uploadbt.grid( row=button_row,column=2,sticky=E)
+        self.buttonframe.uploadbt = TK.Button(self.buttonframe,  text='Upload',  command=self.upload)
+        self.buttonframe.uploadbt.grid( row=button_row,column=button_col+2,sticky=E)
  
-        self.mainframe.releasebt = TK.Button(self.mainframe, text='Release', command=self.release)
-        self.mainframe.releasebt.grid(row=button_row,column=3,sticky=E)
+        self.buttonframe.releasebt = TK.Button(self.buttonframe, text='Release', command=self.release)
+        self.buttonframe.releasebt.grid(row=button_row,column=button_col+3,sticky=E)
 
-        self.mainframe.removebt = TK.Button(self.mainframe, text='Remove',  command=self.remove)
-        self.mainframe.removebt.grid( row=button_row,column=4,sticky=E)
+        self.buttonframe.removebt = TK.Button(self.buttonframe, text='Remove',  command=self.remove)
+        self.buttonframe.removebt.grid( row=button_row,column=button_col+4,sticky=E)
  
-        self.mainframe.quitbt = TK.Button(self.mainframe,    text='Quit',    command=self.quit)
-        self.mainframe.quitbt.grid(   row=button_row,column=5,sticky=E)
+        self.buttonframe.quitbt = TK.Button(self.buttonframe,    text='Quit',    command=self.quit)
+        self.buttonframe.quitbt.grid(   row=button_row,column=button_col+5,sticky=E)
+
   
         #C H E C K B O X
+        self.checkframe.cblabel = TK.Label(self.checkframe,text='Options').grid(row=0,column=0,sticky=W)
         crcbv = TK.IntVar()
-        self.mainframe.crcb = TK.Checkbutton(self.mainframe, text='Crop Region',variable=crcbv)
-        self.mainframe.crcb.grid( row=0,column=4,columnspan=2,sticky=W)
-        self.mainframe.crcbvar = crcbv   
+        self.checkframe.crcb = TK.Checkbutton(self.checkframe, text='Crop Region',variable=crcbv,selectcolor='grey')
+        self.checkframe.crcb.grid(row=1,column=0,columnspan=2,sticky=W)
+        self.checkframe.crcbvar = crcbv   
         owcbv = TK.IntVar()
-        self.mainframe.owcb = TK.Checkbutton(self.mainframe, text='Overwrite',variable=owcbv)
-        self.mainframe.owcb.grid(   row=1,column=4,columnspan=2,sticky=W)
-        self.mainframe.owcb.select()
-        self.mainframe.owcbvar = owcbv   
+        self.checkframe.owcb = TK.Checkbutton(self.checkframe, text='Overwrite',variable=owcbv,selectcolor='grey')
+        self.checkframe.owcb.grid(   row=2,column=0,columnspan=2,sticky=W)
+        self.checkframe.owcb.select()
+        self.checkframe.owcbvar = owcbv   
         lrcbv = TK.IntVar()
-        self.mainframe.lrcb = TK.Checkbutton(self.mainframe, text='Link Release',variable=lrcbv)
-        self.mainframe.lrcb.grid(row=2,column=4,columnspan=2,sticky=W)
-        self.mainframe.lrcbvar = lrcbv   
+        self.checkframe.lrcb = TK.Checkbutton(self.checkframe, text='Link Release',variable=lrcbv,selectcolor='grey')
+        self.checkframe.lrcb.grid(row=3,column=0,columnspan=2,sticky=W)
+        self.checkframe.lrcbvar = lrcbv
+        ulcbv = TK.IntVar()
+        self.checkframe.ulcb = TK.Checkbutton(self.checkframe, text='Update LDS Layers',variable=ulcbv,selectcolor='grey')
+        self.checkframe.ulcb.grid(row=4,column=0,columnspan=2,sticky=W)
+        self.checkframe.ulcbvar = ulcbv   
         
-        #L A B E L
-        self.mainframe.fidlb = TK.Label(self.mainframe,    text='UFID Column Name').grid(  row=0,column=0,sticky=W)
-        self.mainframe.exciselb = TK.Label(self.mainframe, text='Column To Remove').grid(  row=1,column=0,sticky=W)      
-        self.mainframe.dirlb = TK.Label(self.mainframe,    text='Selected Directory').grid(row=2,column=0,sticky=W)      
-        self.mainframe.gidlb = TK.Label(self.mainframe,    text='LINZ Group').grid(row=3,column=0,sticky=W)      
-        
-        #T E X T B O X
+        #I N P U T
+
+        self.inputframe.fidlb = TK.Label(self.inputframe,    text='UFID Column Name')   .grid(row=0,column=0,sticky=W)
         fidebv = TK.StringVar()
         fidebv.set(DEF_UFID)
-        self.mainframe.fideb = TK.Entry(self.mainframe,textvariable=fidebv)
-        self.mainframe.fideb.grid(row=0,column=1,columnspan=3)
-        self.mainframe.fidebvar = fidebv
+        self.inputframe.fideb = TK.Entry(self.inputframe,textvariable=fidebv)
+        self.inputframe.fideb.grid(row=input_row+0,column=1,columnspan=3)
+        self.inputframe.fidebvar = fidebv
+        
+        self.inputframe.exciselb = TK.Label(self.inputframe, text='Column To Remove')   .grid(row=1,column=0,sticky=W)
         exciseebv = TK.StringVar()
-        self.mainframe.exciseeb = TK.Entry(self.mainframe,textvariable=exciseebv)
-        self.mainframe.exciseeb.grid(row=1,column=1,columnspan=3)
-        self.mainframe.exciseebvar = exciseebv
+        self.inputframe.exciseeb = TK.Entry(self.inputframe,textvariable=exciseebv)
+        self.inputframe.exciseeb.grid(row=input_row+1,column=1,columnspan=3)
+        self.inputframe.exciseebvar = exciseebv
+        
+        self.inputframe.dirlb = TK.Label(self.inputframe,    text='Shapefile Directory').grid(row=2,column=0,sticky=W)   
         direbv = TK.StringVar()
         direbv.set(DEF_PATH)#self.dirname)
-        self.mainframe.direb = TK.Entry(self.mainframe,textvariable=direbv)
-        self.mainframe.direb.grid(row=2,column=1,columnspan=3)
-        self.mainframe.direbvar = direbv
-        
-        #D R O P D O W N
+        self.inputframe.direb = TK.Entry(self.inputframe,textvariable=direbv)
+        self.inputframe.direb.grid(row=input_row+2,column=1,columnspan=3)
+        self.inputframe.direbvar = direbv
+           
+        self.inputframe.gidlb = TK.Label(self.inputframe,    text='LINZ Org/Group')     .grid(row=3,column=0,sticky=W)      
         gidddv = TK.StringVar()
         gidddv.set(group_options[DEF_GID])
-        self.mainframe.giddd = TK.OptionMenu(self.mainframe,gidddv,*group_options)
-        self.mainframe.giddd.config(width=16)
-        self.mainframe.giddd.grid(row=3,column=1,columnspan=3)
-        self.mainframe.gidddvar = gidddv
+        self.inputframe.giddd = TK.OptionMenu(self.inputframe,gidddv,*group_options)
+        self.inputframe.giddd.config(width=16)
+        self.inputframe.giddd.grid(row=input_row+3,column=1,columnspan=3)
+        self.inputframe.gidddvar = gidddv
         
         #T E X T L O G
-        self.mainframe.logwindow = ScrolledText(self.mainframe)
-        self.mainframe.logwindow.config(bg='white',relief=SUNKEN,wrap=TK.WORD)
-        self.mainframe.logwindow.grid(row=log_row,column=0,columnspan=6,rowspan=4)
-        self.logger = WidgetLogger(self.mainframe.logwindow)
+        self.logframe.logwindow = ScrolledText(self.logframe)
+        self.logframe.logwindow.config(bg='white',fg='black',relief=SUNKEN,wrap=TK.WORD)
+        self.logframe.logwindow.grid(row=log_row,column=0,columnspan=6,rowspan=4)
+        self.logger = WidgetLogger(self.logframe.logwindow)
 
         
     def quit(self):
-        self.mainframe.quit()
+        self.master.quit()
         
     def reblock(self):
-        self.dirname = self.mainframe.direbvar.get()
-        ufid = self.mainframe.fidebvar.get()
-        lcr = self.mainframe.crcbvar.get()>0 or False
-        ow = self.mainframe.owcbvar.get()>0 or False
+        self.dirname = self.inputframe.direbvar.get()
+        ufid = self.inputframe.fidebvar.get()
+        lcr = self.checkframe.crcbvar.get()>0 or False
+        ow = self.checkframe.owcbvar.get()>0 or False
         self.logger.emit('Reblock {} ufid={}, lcr={}, overwrite={}'.format(self.dirname,ufid,lcr,ow)) 
         #layer set to None since never used and acts as filter
         #actionflag set to 7=import/process/export, selectflag set to True = only process shp in dir
@@ -188,24 +228,24 @@ class RUI(object):
         
     def upload(self):
         '''Single layer uploader'''
-        self.dirname = self.mainframe.direbvar.get()
-        grp = self.mainframe.gidddvar.get()
+        self.dirname = self.inputframe.direbvar.get()
+        grp = self.inputframe.gidddvar.get()
         self.logger.emit('Upload dir {} to {} DS'.format(self.dirname,grp))
         for fg in self._filter():
             fg = '{}{}{}'.format(self.dirname,os.path.sep,fg)
             print ('Uploading layer {}'.format(fg))    
-            ldsup = KU.LDSUploader(self.logger,self.mainframe.owcbvar.get()>0 or False)
+            ldsup = KU.LDSUploader(self.logger,self.checkframe.owcbvar.get()>0 or False,self.checkframe.ulcbvar.get()>0 or False)
             ldsup.setLayer(fg)
             ldsup.setGroup(grp)
             ldsup.upload()
         
     def release(self):
         self.logger.emit('Release')
-        print ('Releasing new topo release locally to CP witk linkrelease={}'.format(self.mainframe.lrcbvar.get()))
-        #LR.release(link=self.mainframe.lrcbvar.get())
+        print ('Releasing new topo release locally to CP witk linkrelease={}'.format(self.checkframe.lrcbvar.get()))
+        #LR.release(link=self.checkframe.lrcbvar.get())
         
     def remove(self):
-        fid = self.mainframe.fidebvar.get()
+        fid = self.inputframe.fidebvar.get()
         self.logger.emit('Remove column lease'.format(fid))
         print ('Removing column from dir {} with cname {}'.format(self.dirname,fid))
         if True:#pass
@@ -215,13 +255,13 @@ class RUI(object):
     
     def select(self):
         self.dirname = self.dirname or DEF_PATH
-        self.dirname = FD.askdirectory(parent=self.mainframe,initialdir=self.dirname,title='Please select a directory')
-        self.mainframe.direbvar.set(self.dirname)
-        #self.mainframe.direb.insert(0,self.dirname)
+        self.dirname = FD.askdirectory(parent=self.inputframe,initialdir=self.dirname,title='Please select a directory')
+        self.inputframe.direbvar.set(self.dirname)
+        #self.inputframe.direb.insert(0,self.dirname)
         print (self.dirname)
         self.logger.emit('Select {}'.format(self.dirname))
         
-        #fdlg = FD.LoadFileDialog(self.mainframe, title="Choose A ShapeFile")#,filetypes=[('Shapefile','*.shp'),])
+        #fdlg = FD.LoadFileDialog(self.inputframe, title="Choose A ShapeFile")#,filetypes=[('Shapefile','*.shp'),])
         #self.filename = fdlg.go(pattern='*.shp') # opt args: dir_or_file=os.curdir, pattern="*", default="", key=None)
        
     def _filter(self):

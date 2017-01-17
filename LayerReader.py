@@ -70,6 +70,9 @@ DEF_CREDS = '.pdb_credentials'
 DEF_HOST = '127.0.0.1'
 DEF_PORT = 5432
 
+CONFIG = None
+UICONFIG = None
+
 if re.search('posix',os.name):
     DEF_SHAPE_PATH = ('/home/',)
 else:
@@ -272,6 +275,7 @@ class PGDS(_DS):
     def _getopts(self):
         usr,pwd = CredsLib.userpass(DEF_CREDS)
         h,p = CredsLib.hostport(DEF_CREDS)
+        
         return {'DBNAME':self.DBNAME,'HOST':h if h else DEF_HOST,'PORT':p if p else DEF_PORT,'USER':usr,'PASS':pwd}
     
     def ogrconnstr(self):
@@ -607,14 +611,27 @@ def main():
     elif switch == 'LINKRELEASE':
         release(link=True)
     else:
-        convert(spath,layer,ufidname,actionflag,selectflag,loadcropregions)
-        
-            
-def convert(spath,layer,ufidname,actionflag,selectflag,loadcropregions):            
+        convertImpl(spath,layer,ufidname,actionflag,selectflag,loadcropregions)
+       
+def setConfig(uiconfig,config):
+    global CONFIG
+    CONFIG = config
+    global UICONFIG
+    UICONFIG = uiconfig
+
+def convert(uiconfig,config):
+    setConfig(uiconfig,config)
+    setOverwrite(uiconfig.opt_overwrite)
+    # layer [A2] set to None since never used and acts as filter
+    # actionflag [A4] set to 7=import/process/export
+    # selectflag [A5] set to True = only process shp in dir
+    convertImpl(uiconfig.val_dir,None,uiconfig.val_fid,7,True,uiconfig.opt_cropreg)
+    
+def convertImpl(spath,layer,ufidname,actionflag,selectflag,loadcropregions):            
     #actionflag = 2
     #inlayers=['airport_poly','lake_poly','railway_cl']  
     inlayers = ()
-          
+    
     if ENABLE_VERSIONING:
         PXDS = PGDS_Version
     else:

@@ -273,8 +273,8 @@ class PGDS(_DS):
         self.dsl = {fname:self.initalise(fname, True)}
         
     def _getopts(self):
-        usr,pwd = CredsLib.userpass(DEF_CREDS)
-        h,p = CredsLib.hostport(DEF_CREDS)
+        usr,pwd = CredsReader.userpass(DEF_CREDS)
+        h,p = CredsReader.hostport(DEF_CREDS)
         
         return {'DBNAME':self.DBNAME,'HOST':h if h else DEF_HOST,'PORT':p if p else DEF_PORT,'USER':usr,'PASS':pwd}
     
@@ -495,7 +495,7 @@ class Reporter(object):
         
 #   -----------------------------------------------------------------------------------------------
 
-class CredsLib(object):
+class CredsReader(object):
     @classmethod
     def userpass(cls,upfile):
         return (cls.searchfile(upfile,'username'),cls.searchfile(upfile,'password'))

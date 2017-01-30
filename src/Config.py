@@ -35,7 +35,7 @@ except:
 
 UNAME = os.environ['USERNAME'] if re.search('win',sys.platform) else os.environ['LOGNAME']
 DEF_CONFIG = {'db':{'host':'127.0.0.1'},'user':{'name':UNAME}}
-CONFIG_FILE = os.path.join(os.path.dirname(__file__),'config.ini')
+CONFIG_FILE = os.path.normpath(os.path.join(os.path.dirname(__file__),'../assets/config.ini'))
 
 
 if not USE_PLAINTEXT:

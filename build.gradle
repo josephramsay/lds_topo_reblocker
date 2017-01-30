@@ -12,24 +12,42 @@ LICENSE file for more information.
 
 
 plugins {
-  id "com.linkedin.python-sdist" version "0.3.9"
+    id "com.linkedin.python-sdist" version "0.3.9"
 }
+
+version = 1.0
+
+repositories {
+    mavenCentral()
+    pyGradlePyPi()
+}
+
 
 dependencies {
     python 'pypi:requests:2.9.1'
-    test 'pypi:mock:1.0.1'
+    python 'net.launchpad:koordinates:1.0+' 
 }
 
-repositories {
-   pyGradlePyPi()
+task koordinates (type: Exec){
+    workingDir '.'
+    commandLine 'pip3','install','koordinates'
 }
 
-ext {
-    user = '<user>'
+task list {
+	FileCollection collection = files(
+	        '__init__.py',
+	        'ReblockerUI.py',
+	        'LayerReader.py',
+	        'Config.py',
+	        'Const.py',
+	        'config.ini',
+	        'CropRegions.*'
+	)
+	collection.each { File file ->
+	    println file.name
+	}
 }
-
-task copyscripts(type: Copy) {
-     //dependsOn test
+task copy1(type: Copy) {
      from('.') {
          include '__init__.py'
          include 'ReblockerUI.py'
@@ -39,11 +57,31 @@ task copyscripts(type: Copy) {
          include 'config.ini'
          include 'CropRegions.*'
      }
-     into '/home/${user}/package/reblocker/'
-     
-     from ('/home/${user}/git/LDS/LDSAPI/KPCInterface') {
+     into "/home/${userHomeDir}/package/reblocker/"
+}
+
+
+task copy2(type: Copy) {
+     from ("/home/${userHomeDir}/git/LDS/LDSAPI/KPCInterface") {
+        include '__init__.py'
         include 'AuthReader.py'
         include 'KPCUploader.py'
+        include 'KPCAPI.py'
      }     
-     into '/home/${user}/package/reblocker/KPCInterface'
+     into "/home/${userHomeDir}/package/reblocker/KPCInterface"
+}
+
+task copyall{
+    dependsOn copy1, copy2
+}
+
+task zip(dependsOn: copyall, type: Zip){
+    from ("/home/${userHomeDir}/package/reblocker/")
+    
+    //destinationDir = new File("/home/${userHomeDir}/package/reblocker")
+    //destinationDir = new File("/home/${userHomeDir}/package/reblocker")
+
+    //println zip.archiveName
+    //println relativePath(zip.destinationDir)
+    println relativePath(zip.archivePath)
 }

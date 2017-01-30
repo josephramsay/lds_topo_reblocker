@@ -1,0 +1,45 @@
+[env]
+name: Reblocker
+version: 1.0
+prefix: reblock
+
+[server]
+#information on upload server
+url: name.of.data.service.com
+key: 123456789012345678901234
+overwrite: True
+
+[local]
+#local file information, incl def shp dir. New dir prefix etc
+server: localhost
+path: ~
+ufid: id
+    
+[remote]
+#remte staging server information
+server: remote.staging.server
+path: /path
+user: username
+pass: password
+workgroup: AD
+defs: {
+        "group":{
+            "smb_server":"smb.server",
+            "smb_path":"smb.path",
+            "source_id":1,
+            "datasource_id":1,
+            "group_id":1
+        }
+    }
+
+[database]
+#interim database connection info
+host: database.server
+port: 5432
+name: database
+schema: public
+user: username
+pass: password
+
+[const]
+ct_ind='###'

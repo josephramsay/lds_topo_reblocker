@@ -77,7 +77,7 @@ DEF_UFID = 't50_fid'
 DEF_GID = 0 # option 0
 LOGCOUNT = 0
 
-UIConfig = namedtuple('UIConfig','opt_cropreg opt_overwrite opt_linkrel opt_update val_fid val_remove val_dir val_grp')
+UIConfig = namedtuple('UIConfig','opt_cropreg opt_overwrite opt_linkrel opt_update opt_deep val_fid val_remove val_dir val_grp')
 
 def UIConfigDec(func):
     def setUI(self,*args, **kwargs):
@@ -87,6 +87,7 @@ def UIConfigDec(func):
                 opt_overwrite=self.checkframe.owcbvar.get()>0,
                 opt_linkrel=self.checkframe.lrcbvar.get()>0,
                 opt_update=self.checkframe.ulcbvar.get()>0,
+                opt_deep=self.checkframe.dpcbvar.get()>0,
                 val_fid=self.inputframe.fidebvar.get(),
                 val_remove=self.inputframe.exciseebvar.get(),
                 val_dir=self.inputframe.direbvar.get(),
@@ -180,7 +181,7 @@ class RUI(object):
 
         self.buttonframe.removebt = TK.Button(self.buttonframe, text='Remove',  command=self.remove)
         self.buttonframe.removebt.grid( row=button_row,column=button_col+4,sticky=E)
-        self.createToolTip(self.buttonframe.removebt, 'CHECK WHAT THIS DOES')
+        self.createToolTip(self.buttonframe.removebt, 'Remove named column from Layer')
  
         self.buttonframe.quitbt = TK.Button(self.buttonframe,    text='Quit',    command=self.quit)
         self.buttonframe.quitbt.grid(   row=button_row,column=button_col+5,sticky=E)
@@ -193,22 +194,31 @@ class RUI(object):
         self.checkframe.crcb.grid(row=1,column=0,columnspan=2,sticky=W)
         self.createToolTip(self.checkframe.crcb, '(Re)Load CropRegion layer to database')
         self.checkframe.crcbvar = crcbv   
+        
         owcbv = TK.IntVar()
         self.checkframe.owcb = TK.Checkbutton(self.checkframe, text='Overwrite',variable=owcbv,selectcolor='grey')
         self.checkframe.owcb.grid(   row=2,column=0,columnspan=2,sticky=W)
         if self.config.server_overwrite == True: self.checkframe.owcb.select()
         self.createToolTip(self.checkframe.owcb, 'Overwrite layer saved on database')
-        self.checkframe.owcbvar = owcbv   
+        self.checkframe.owcbvar = owcbv 
+        
         lrcbv = TK.IntVar()
         self.checkframe.lrcb = TK.Checkbutton(self.checkframe, text='Link Release',variable=lrcbv,selectcolor='grey')
         self.checkframe.lrcb.grid(row=3,column=0,columnspan=2,sticky=W)
         self.createToolTip(self.checkframe.lrcb, '(Re)Link Crown Property view to reblocked tables')
         self.checkframe.lrcbvar = lrcbv
+        
         ulcbv = TK.IntVar()
         self.checkframe.ulcb = TK.Checkbutton(self.checkframe, text='Update LDS Layers',variable=ulcbv,selectcolor='grey')
-        self.checkframe.ulcb.grid(row=4,column=0,columnspan=2,sticky=W)
+        self.checkframe.ulcb.grid(row=1,column=2,columnspan=2,sticky=W)
         self.createToolTip(self.checkframe.ulcb, '(Re)Read LDS list of layers')
-        self.checkframe.ulcbvar = ulcbv   
+        self.checkframe.ulcbvar = ulcbv 
+        
+        dpcbv = TK.IntVar()
+        self.checkframe.dpcb = TK.Checkbutton(self.checkframe, text='Deep remove',variable=dpcbv,selectcolor='grey')
+        self.checkframe.dpcb.grid(row=2,column=2,columnspan=2,sticky=W)
+        self.createToolTip(self.checkframe.dpcb, 'Remove column from layers in subdrectories')
+        self.checkframe.dpcbvar = dpcbv   
         
         #I N P U T
 
@@ -222,7 +232,7 @@ class RUI(object):
         
         self.inputframe.exciselb = TK.Label(self.inputframe, text='Column To Remove')   .grid(row=1,column=0,sticky=W)
         exciseebv = TK.StringVar()
-        self.inputframe.exciseeb = TK.Entry(self.inputframe,textvariable=exciseebv)
+        self.inputframe.exciseeb = TK.Entry(self.inputframe,textvariable=exciseebv,validate="all",validatecommand=self.enable_disable)
         self.inputframe.exciseeb.grid(row=input_row+1,column=1,columnspan=3)
         self.createToolTip(self.inputframe.exciseeb, 'Name of column to remove')
         self.inputframe.exciseebvar = exciseebv
@@ -249,7 +259,16 @@ class RUI(object):
         self.logframe.logwindow.config(bg='white',fg='black',relief=SUNKEN,wrap=TK.WORD)
         self.logframe.logwindow.grid(row=log_row,column=0,columnspan=6,rowspan=4)
         self.logger = WidgetLogger(self.logframe.logwindow)
-
+        
+        self.enable_disable()
+        
+    def enable_disable(self):
+        '''Hijacked entry validate to enable remove button'''
+        if self.inputframe.exciseeb.get():
+            self.buttonframe.removebt.config(state='normal')
+        else:
+            self.buttonframe.removebt.config(state='disabled')
+        return True
 
     def quit(self):
         self.master.quit()
@@ -265,7 +284,6 @@ class RUI(object):
         
     @UIConfigDec
     def reblock(self):
-        #self._setUIConfig()
         self.logger.emit('Reblock {} ufid={}, lcr={}, overwrite={}'.format(
             self.uiconfig.val_dir,self.uiconfig.val_fid,self.uiconfig.opt_cropreg,self.uiconfig.opt_overwrite))
         LR.convert(self.uiconfig,self.config)
@@ -273,7 +291,6 @@ class RUI(object):
     @UIConfigDec
     def upload(self):
         '''Single layer uploader'''
-        #self._setUIConfig()
         self.logger.emit('Upload dir {} to {} DS'.format(self.uiconfig.val_dir,self.uiconfig.val_grp))
         ldsup = KU.LDSUploaderWrapper(self.logger,self.uiconfig,self.config)
         for fg in self._filter():
@@ -283,7 +300,6 @@ class RUI(object):
             
     @UIConfigDec   
     def release(self):
-        #self._setUIConfig()
         self.logger.emit('Release')
         print ('Releasing new topo release locally to CP witk linkrelease={}'.format(self.checkframe.lrcbvar.get()))
         LR.release(link=self.uiconfig.opt_linkrel)
@@ -291,17 +307,15 @@ class RUI(object):
     @UIConfigDec
     def remove(self):
         '''Delete named column from layer'''
-        #self._setUIConfig()
-        self.logger.emit('Remove column lease'.format(self.uiconfig.val_fid))
-        print ('Removing column from dir {} with cname {}'.format(self.uiconfig.val_dir,self.uiconfig.val_fid))
-        if True:#pass
-            LR.deepcrop(self.uiconfig.val_dir,self.uiconfig.val_fid)
+        self.logger.emit('Remove column {}'.format(self.uiconfig.val_remove))
+        print ('Removing column from layers in dir {} with col_name {}'.format(self.uiconfig.val_dir,self.uiconfig.val_remove))
+        if self.uiconfig.opt_deep:
+            LR.deepcrop(self.uiconfig.val_dir,self.uiconfig.val_remove)
         else:#pass
-            LR.crop(self.uiconfig.val_dir,self.uiconfig.val_fid)
+            LR.crop(self.uiconfig.val_dir,self.uiconfig.val_remove)
             
     @UIConfigDec
     def select(self):
-        #self._setUIConfig()
         dirname = FD.askdirectory(parent=self.inputframe,initialdir=self.uiconfig.val_dir,title='Please select a directory')
         self.inputframe.direbvar.set(dirname)
         #self.inputframe.direb.insert(0,dirname)
@@ -310,12 +324,12 @@ class RUI(object):
         
         #fdlg = FD.LoadFileDialog(self.inputframe, title="Choose A ShapeFile")#,filetypes=[('Shapefile','*.shp'),])
         #self.filename = fdlg.go(pattern='*.shp') # opt args: dir_or_file=os.curdir, pattern="*", default="", key=None)
-       
+    
     def _filter(self):
         '''filter list of files in selected directory with shape suffixes
         eg f1.shp,f1.shx,f1.prj,f1,cpg,f2.shp,f2.shx,f2.prj,f2,cpg,'''
         return set([fg[:fg.rfind('.')] for fg in os.listdir(self.dirname) if fg[fg.rfind('.')+1:] in KU.SHP_SUFFIXES])
-        
+    
     def _offset(self,window):
         window.update_idletasks()
         w = window.winfo_screenwidth()

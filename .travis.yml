@@ -13,7 +13,7 @@ install:
   #- sudo apt-get install gdal-bin
   
   - sudo apt-get install libgdal-dev libgdal1h
-  - pip install --global-option=build_ext --global-option="-I/usr/include/gdal"
+  - pip install --global-option=build_ext --global-option="-I/usr/include/gdal" GDAL=\`gdal-config --version\`
   - pip install -r requirements.txt
 
 services:

@@ -18,4 +18,4 @@ before-script:
   - psql -c "create extension postgis;" -U postgres
 
 script: 
-  - pytest
+  - python test/testsuite.py

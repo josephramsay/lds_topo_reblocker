@@ -7,7 +7,12 @@ before-install:
   - postgresql
 
 install:
-  - sudo apt-get install python-gdal
+  - pip install --no-install GDAL
+  - pip download GDAL
+  - python setup.py build_ext --include-dirs=/usr/include/gdal/
+  - pip install --no-download GDAL
+  - sudo python setup.py install --include-dirs=/usr/include/gdal
+  #- sudo apt-get install python-gdal
   - pip install -r requirements.txt
 
 services:

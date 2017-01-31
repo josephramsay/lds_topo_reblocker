@@ -10,6 +10,7 @@ install:
   - sudo apt-add-repository -y ppa:ubuntugis/ubuntugis-unstable
   - sudo apt-get update
   - sudo apt-get install python-gdal
+  - sudo apt-get install gdal-bin
   - pip install -r requirements.txt
 
 services:

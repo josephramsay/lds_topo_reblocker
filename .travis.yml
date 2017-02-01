@@ -3,6 +3,9 @@ python:
   - "2.7"
   - "3.5"
 
+before_install:
+  - postgresql
+
 install:
   - sudo apt-get install postgis
   - sudo apt-get install libgdal-dev libgdal1h

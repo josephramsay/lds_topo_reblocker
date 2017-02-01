@@ -28,9 +28,9 @@ install:
   ##- ln -s /usr/lib/python2.7/dist-packages/GDAL-1.7.3.egg-info ~/virtualenv/python2.7/lib/python2.7/site-packages/
   
   # METHOD 1
-  #- sudo apt-get install libgdal-dev libgdal1h
+  - sudo apt-get install libgdal-dev libgdal1h
   #- sudo apt-get install postgresql-9.1-postgis-2.1
-  #- pip install --global-option=build_ext --global-option="-I/usr/include/gdal" GDAL==`gdal-config --version`
+  - pip install --global-option=build_ext --global-option="-I/usr/include/gdal" GDAL==`gdal-config --version`
   - pip install -r requirements.txt
 
 before_script:

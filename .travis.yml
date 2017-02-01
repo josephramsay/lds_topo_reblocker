@@ -17,7 +17,7 @@ before_install:
   - sudo rm -f /etc/apt/sources.list.d/pgdg-source.list # postgis from pgdg requires different gdal package than the grass package
   - sudo apt-get update -qq
   - sudo apt-get remove postgresql-9.1-postgis-2.1 # Remove postgis from pgdg, will install postgis from ubuntugis-unstable instead
-  - sudo apt-get install --no-install-recommends postgresql-9.1-postgis-2.1
+  #- sudo apt-get install --no-install-recommends postgresql-9.1-postgis-2.1
   
 install:
   # METHOD 2
@@ -30,6 +30,7 @@ install:
   # METHOD 1
   - sudo apt-get install libgdal-dev libgdal1h
   #- sudo apt-get install postgresql-9.1-postgis-2.1
+  - sudo apt-get install --no-install-recommends postgresql-9.1-postgis-2.1
   - pip install --global-option=build_ext --global-option="-I/usr/include/gdal" GDAL==`gdal-config --version`
   - pip install -r requirements.txt
 

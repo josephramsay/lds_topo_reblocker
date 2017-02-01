@@ -6,9 +6,6 @@ python:
 services:
   - postgresql
   
-addons:
-  postgresql: "9.6"
-  
 install:
   - sudo apt-get install postgis
   - sudo apt-get install libgdal-dev libgdal1h

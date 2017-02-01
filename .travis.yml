@@ -2,7 +2,7 @@ language: python
 python:
   - "2.7"
   - "3.5"
-
+  
 services:
   - postgresql
   
@@ -30,3 +30,4 @@ before_script:
 
 script: 
   - python test/testsuite.py
+  

@@ -30,9 +30,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__),'../src')
 from Logger import Logger
 from LayerReader import LayerReader, initds, SFDS, PGDS
 
-
 testlog = Logger.setup('test')
-
 
 def config():
     PGCONNSTR = "PG: dbname='{d}' host='{h}' port='{p}' user='{u}' password='{x}' active_schema={s}"

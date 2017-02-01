@@ -9,10 +9,9 @@ services:
 install:
   #- sudo apt-get install postgis
   - sudo apt-get install libgdal-dev libgdal1h
+  - sudo apt-get install postgres-9.1-postgis-2.1
   - pip install --global-option=build_ext --global-option="-I/usr/include/gdal" GDAL==`gdal-config --version`
   - pip install -r requirements.txt
-  #gdal install uninstalls postgis so we attempt to reinstall it
-  - sudo apt-get install postgis
 
 before_script:
   #- cp test/database.yml database.yml  

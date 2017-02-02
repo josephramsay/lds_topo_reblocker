@@ -33,11 +33,10 @@ from LayerReader import LayerReader, initds, SFDS, PGDS
 testlog = Logger.setup('test')
 
 def config():
-    PGCONNSTR = "PG: dbname='{d}' host='{h}' port='{p}' user='{u}' password='{x}' active_schema={s}"
-    #1:['127.0.0.1','template1',5432,'postgres','password','public'],
-    PP = {1:{'host':'127.0.0.1','database':'','port':5432,'username':'','password':'','schema':'public'},
-          2:{'host':'127.0.0.1','database':'','port':5432,'username':'','password':'','schema':'public'}}
-    p = PP[1 if os.getenv('TRAVIS') else 2]
+    connstr = "PG: dbname='{d}' host='{h}' port='{p}' user='{u}' password='{x}' active_schema={s}"
+    TorL = {'travis':{'host':'127.0.0.1','database':'','port':5432,'username':'','password':'','schema':'public'},
+            'local' :{'host':'127.0.0.1','database':'','port':5432,'username':'','password':'','schema':'public'}}
+    p = TorL['travis' if os.getenv('TRAVIS') else 'local']
     
     with open(os.path.join(os.path.dirname(__file__),"database.yml"), 'r') as dby:
         try:
@@ -45,7 +44,7 @@ def config():
         except yaml.YAMLError as exc:
             print(exc)
             
-    return PGCONNSTR.format(h=p['host'],d=p['database'],p=p['port'],u=p['username'],x=p['password'],s=p['schema'])
+    return connstr.format(h=p['host'],d=p['database'],p=p['port'],u=p['username'],x=p['password'],s=p['schema'])
 
 
 class Test_0_LayerReaderSelfTest(unittest.TestCase):
@@ -66,7 +65,7 @@ class Test_0_LayerReaderSelfTest(unittest.TestCase):
         testlog.debug('Test_0.20 LayerReader instantiation test')
         self.assertNotEqual(LayerReader(None,None),None,'LayerReader not instantiated')
         
-class Test_1_LayerReaderConfigTest(unittest.TestCase):    
+class Test_4_LayerReaderConfigTest(unittest.TestCase):    
     '''Test LayerReader functions'''
         
     def setUp(self):
@@ -79,9 +78,55 @@ class Test_1_LayerReaderConfigTest(unittest.TestCase):
     def test10_layerReaderInit(self):
         self.assertNotEqual(self.layerreader,None,'LayerReader not instantiated')
         
-    def test10_layerReaderInit(self):
+    def test20_layerReaderInit(self):
         self.assertNotEqual(self.layerreader,None,'LayerReader not instantiated')
     
-    
+class Test_1_PGDS(unittest.TestCase):
+
+    def setUp(self):
+        self.pgds = PGDS(config())
+
+    def tearDown(self):
+        self.pgds = None
+
+    def test10_pgdsInit(self):
+        self.assertNotEqual(self.pgds, None, 'PG DS not instantiated')
+
+    def test20_pgdsNormalConnect(self):
+        self.pgds.connect()
+        self.assertNotEqual(self.pgds.cur, None, 'PG Cursor not instantiated')
+        self.pgds.disconnect()
+
+    def test30_pgdsContextConnect(self):
+        with PGDS(config()) as pgds:
+            self.assertNotEqual(pgds.cur, None, 'PG context Cursor not instantiated')
+
+    def test40_pgdsExecuteTF(self):
+        with PGDS(config()) as pgds:
+            res = pgds.execute('select 100', False)
+            self.assertEqual(res, True, "Execute doesn't return success")
+
+    def test41_pgdsExecuteRes(self):
+        with PGDS(config()) as pgds:
+            res = pgds.execute('select 200', True)
+            self.assertEqual(res[0][0], 200, 'Execute returns wrong result')
+            
+    def test50_pgdsRead(self):
+        with PGDS(config()) as pgds:
+            res = pgds.read(None)
+            self.assertEqual(res, {}, 'Execute returns wrong result')
+            
+class Test_2_SFDS(unittest.TestCase):
+
+    def setUp(self):
+        self.sfds = SFDS(config())
+
+    def tearDown(self):
+        self.sfds = None
+        
+    def test10_sfdsInit(self):
+        self.assertNotEqual(self.sfds, None, 'SF DS not instantiated')
+        
+        
 if __name__ == "__main__":
     unittest.main()

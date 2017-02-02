@@ -113,10 +113,10 @@ class LayerReader(object):
         '''loop through list of shapefile paths, since can provide # different paths to check'''
         return self.dst.write(self.src.read(filt))
 
-    def _transfer(self):
-        for spath in DEF_SHAPE_PATH:
-            for sfile in self.readdir(spath):#['shingle_poly.shp','building_poly.shp','airport_poly.shp']:
-                self.load(os.path.join(spath,sfile))
+#     def _transfer(self):
+#         for spath in DEF_SHAPE_PATH:
+#             for sfile in self.readdir(spath):#['shingle_poly.shp','building_poly.shp','airport_poly.shp']:
+#                 self.load(os.path.join(spath,sfile))
                     
     def purge(self,layer,pkey):
         '''Removes non majority features from layer. If #1 LINE and #10 POLYs in layer, remove the LINE'''
@@ -265,26 +265,42 @@ class PGDS(_DS):
     cur = None
     conn = None
     
+    connectionstring = None
+    
     def __init__(self,fname=None,dbn=None):
         super(PGDS,self).__init__()
         if dbn: self.DBNAME = dbn
         #print 'PGDS',fname,dbn
-        if not fname: fname = self.ogrconnstr()
+        if fname: self._parseConnectionString(fname)
+        else: fname = self.ogrconnstr()
         self.dsl = {fname:self.initalise(fname, True)}
         
+    def __enter__(self):
+        self.connect()
+        return super(PGDS,self).__enter__()
+    
+    def __exit__(self, type, value, traceback):
+        self.disconnect()
+        return super(PGDS,self).__exit__(type, value, traceback)
+        
+    
+    '''this is getting a bit confusing, a connection string shall be "PG: host/db etc &active_schema" and accept PG or plain formats as input'''
+    def _parseConnectionString(self,cs):
+        if cs.startswith('PG'): self.connectionstring = cs
+        else: self.connectionstring = 'PG:{} active_schema={}'.format(cs,DST_SCHEMA)
+            
+    def ogrconnstr(self):
+        return self.connectionstring or 'PG:{} active_schema={}'.format(self.connstr(),DST_SCHEMA)
+        
+    def connstr(self):
+        if self.connectionstring: return self.connectionstring.split(':')[1].split('active_schema')[0].rstrip()
+        go = self._getopts()
+        return "dbname='{2}' host='{0}' port='{1}' user='{3}' password='{4}'".format(go['HOST'],go['PORT'],go['DBNAME'],go['USER'],go['PASS'],)
+    
     def _getopts(self):
         usr,pwd = CredsReader.userpass(DEF_CREDS)
         h,p = CredsReader.hostport(DEF_CREDS)
-        
         return {'DBNAME':self.DBNAME,'HOST':h if h else DEF_HOST,'PORT':p if p else DEF_PORT,'USER':usr,'PASS':pwd}
-    
-    def ogrconnstr(self):
-        return 'PG:{} active_schema={}'.format(self.connstr(),DST_SCHEMA)
-     
-    def connstr(self):
-        go = self._getopts()
-        return "dbname='{2}' host='{0}' port='{1}' user='{3}' password='{4}'".format(go['HOST'],go['PORT'],go['DBNAME'],go['USER'],go['PASS'],)
-        #return "dbname='{2}' host='{0}' port='{1}'".format(go['HOST'],go['PORT'],go['DBNAME'])
     
     def connect(self):
         if not self.cur:
@@ -293,12 +309,11 @@ class PGDS(_DS):
         
     def execute(self,qstr,results=False):
         success = self.cur.execute(qstr)
-        return self.cur.fetchall() if results else success
+        return self.cur.fetchall() if results else not success or success
         
     def disconnect(self):
         self.cur.close()
         self.conn.commit()
-    
 
     def read(self,filt):
         '''Read PG tables'''

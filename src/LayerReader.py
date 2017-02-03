@@ -262,9 +262,10 @@ class PGDS(_DS):
     INIT_VAL = 1
     DRIVER_NAME = 'PostgreSQL'
     DBNAME = 'reblock'
+    CS_TMPLT = "dbname='{2}' host='{0}' port='{1}' user='{3}' password='{4}'"
+
     cur = None
     conn = None
-    
     connectionstring = None
     
     def __init__(self,fname=None,dbn=None):
@@ -286,6 +287,7 @@ class PGDS(_DS):
     
     '''this is getting a bit confusing, a connection string shall be "PG: host/db etc &active_schema" and accept PG or plain formats as input'''
     def _parseConnectionString(self,cs):
+        #TODO validation
         if cs.startswith('PG'): self.connectionstring = cs
         else: self.connectionstring = 'PG:{} active_schema={}'.format(cs,DST_SCHEMA)
             
@@ -295,7 +297,7 @@ class PGDS(_DS):
     def connstr(self):
         if self.connectionstring: return self.connectionstring.split(':')[1].split('active_schema')[0].rstrip()
         go = self._getopts()
-        return "dbname='{2}' host='{0}' port='{1}' user='{3}' password='{4}'".format(go['HOST'],go['PORT'],go['DBNAME'],go['USER'],go['PASS'],)
+        return PGDS.CS_TMPLT.format(go['HOST'],go['PORT'],go['DBNAME'],go['USER'],go['PASS'],)
     
     def _getopts(self):
         usr,pwd = CredsReader.userpass(DEF_CREDS)

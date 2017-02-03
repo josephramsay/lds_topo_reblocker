@@ -114,7 +114,7 @@ class Test_1_PGDS(unittest.TestCase):
     def test50_pgdsRead(self):
         with PGDS(config()) as pgds:
             res = pgds.read(None)
-            self.assertEqual(res, {}, 'Execute returns wrong result')
+            self.assertEqual(res.keys()[0][1] ,'new_test_db', 'Execute returns wrong result')
             
 class Test_2_SFDS(unittest.TestCase):
 

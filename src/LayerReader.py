@@ -327,7 +327,7 @@ class PGDS(_DS):
                 if name.find(DST_TABLE_PREFIX)==0 \
                 and self._tname(name):
                     #checks if (table)name is part of or in any of the filter items
-                    if not filt or max([1 if DST_TABLE_PREFIX+f==name else 0 for f in filt])>0: 
+                    if not filt or max([1 if DST_TABLE_PREFIX + f == name else 0 for f in filt]) > 0: 
                         srid = self._findSRID(name,layer.GetSpatialRef(),USE_EPSG_WEBSERVICE)
                         layerlist[(dsn,name,srid)] = layer
         return layerlist

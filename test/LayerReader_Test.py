@@ -114,18 +114,24 @@ class Test_1_PGDS(unittest.TestCase):
     def test50_pgdsRead(self):
         with PGDS(config()) as pgds:
             res = pgds.read(None)
-            self.assertEqual(res.keys()[0][1] ,'new_test_db', 'Execute returns wrong result')
+            self.assertEqual(list(res.keys())[0][1] ,'new_test_db', 'Error matching PG layerlist keys')
             
 class Test_2_SFDS(unittest.TestCase):
 
+    DEF_TEST_SHP = '../CropRegions.shp'
     def setUp(self):
-        self.sfds = SFDS(config())
+        self.sfds = SFDS(self.DEF_TEST_SHP)
 
     def tearDown(self):
         self.sfds = None
         
     def test10_sfdsInit(self):
         self.assertNotEqual(self.sfds, None, 'SF DS not instantiated')
+        
+    def test20_sfdsRead(self):
+        with SFDS(self.DEF_TEST_SHP) as sfds:
+            res = sfds.read(None)
+            self.assertEqual(list(res.keys())[0][1] ,'CropRegions', 'Error matching SF layerlist keys')
         
         
 if __name__ == "__main__":

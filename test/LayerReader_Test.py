@@ -114,6 +114,7 @@ class Test_1_PGDS(unittest.TestCase):
     def test50_pgdsRead(self):
         with PGDS(config()) as pgds:
             res = pgds.read(None)
+            self.assertNotEqual(res,{},'No results from PG read')
             self.assertEqual(list(res.keys())[0][1] ,'new_test_db', 'Error matching PG layerlist keys')
             
 class Test_2_SFDS(unittest.TestCase):
@@ -131,6 +132,7 @@ class Test_2_SFDS(unittest.TestCase):
     def test20_sfdsRead(self):
         with SFDS(self.DEF_TEST_SHP) as sfds:
             res = sfds.read(None)
+            self.assertNotEqual(res,{},'No results from SF read')
             self.assertEqual(list(res.keys())[0][1] ,'CropRegions', 'Error matching SF layerlist keys')
         
         

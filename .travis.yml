@@ -28,8 +28,9 @@ before_script:
   - psql -c "create user test_user with password 'test_password';" -U postgres
   - psql -c "grant all privileges on database test_db to test_user;" -U postgres
   - psql -f test/test_load.sql -U postgres
-  - psql -f "select * from public.test_pt" -U postgres
-  - psql -f "select * from public.new_test_pt" -U postgres
+  - psql -c "select table_name from information_schema.tables where table_schema = 'public';" -U postgres
+  - psql -c "select * from public.test_pt" -U postgres
+  - psql -c "select * from public.new_test_pt" -U postgres
   - find . -type f
 
 script: 

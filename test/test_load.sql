@@ -1,6 +1,6 @@
 CREATE TABLE public.test_pt (  
   ogc_fid integer NOT NULL,
-  wkb_geometry geometry(Point,900915),
+  wkb_geometry geometry(Point,4326),
   t50_fid double precision,
   CONSTRAINT test_pt_pk PRIMARY KEY (ogc_fid)
 );
@@ -18,7 +18,7 @@ INSERT INTO public.test_pt (ogc_fid, wkb_geometry, t50_fid) VALUES (9,ST_GeomFro
 
 CREATE TABLE public.new_test_pt (  
   ogc_fid integer NOT NULL,
-  wkb_geometry geometry(Point,900915),
+  wkb_geometry geometry(Point,4326),
   t50_fid double precision,
   CONSTRAINT new_test_pt_pk PRIMARY KEY (ogc_fid)
 );

@@ -34,9 +34,10 @@ testlog = Logger.setup('test')
 
 def config():
     connstr = "PG: dbname='{d}' host='{h}' port='{p}' user='{u}' password='{x}' active_schema={s}"
-    TorL = {'travis':{'host':'127.0.0.1','database':'','port':5432,'username':'','password':'','schema':'public'},
-            'local' :{'host':'127.0.0.1','database':'','port':5432,'username':'','password':'','schema':'public'}}
-    p = TorL['travis' if os.getenv('TRAVIS') else 'local']
+    p = {'host':'localhost','database':'','port':5432,'username':'','password':'','schema':'public'}
+    #TorL = {'travis':{'host':'127.0.0.1','database':'','port':5432,'username':'','password':'','schema':'public'},
+    #        'local' :{'host':'<dev.server>','database':'<dev.db>','port':5432,'username':'','password':'','schema':'<dev.schema>'}}
+    #p = TorL['travis' if os.getenv('TRAVIS') else 'local']
     
     with open(os.path.join(os.path.dirname(__file__),"database.yml"), 'r') as dby:
         try:
@@ -115,7 +116,7 @@ class Test_1_PGDS(unittest.TestCase):
         with PGDS(config()) as pgds:
             res = pgds.read(None)
             self.assertNotEqual(res,{},'No results from PG read')
-            self.assertEqual(list(res.keys())[0][1] ,'new_test_db', 'Error matching PG layerlist keys')
+            self.assertEqual(list(res.keys())[0][1] ,'new_test_pt', 'Error matching PG layerlist keys')
             
 class Test_2_SFDS(unittest.TestCase):
 

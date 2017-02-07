@@ -1,6 +1,6 @@
 postgres:
   adapter: postgresql
-  host: devassgeo01
+  host: localhost
   database: test_db
   port: 5432
   schema: public

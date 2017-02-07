@@ -2,4 +2,4 @@ postgres:
   adapter: postgresql
   database: test_db
   username: test_user
-  password: test_pass
+  password: test_password

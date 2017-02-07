@@ -220,6 +220,8 @@ class _DS(object):
         try:
             upd = 1 if OVERWRITE else 0
             #ds = self.driver.Open(dsn, upd)
+            print (1000,os.path.dirname(dsn))
+            print (2000,os.path.dirname(__file__))
             ds = ogr.Open(dsn, upd)
             if ds is None:
                 raise DatasourceException('Null DS {}'.format(dsn))

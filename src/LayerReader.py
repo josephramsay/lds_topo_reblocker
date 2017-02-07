@@ -322,7 +322,9 @@ class PGDS(_DS):
     def read(self,filt):
         '''Read PG tables'''
         layerlist = {}
+        print ('DSL',self.dsl)
         for dsn in self.dsl:
+            print ('dsn',dsn)
             for index in range(self.dsl[dsn].GetLayerCount()):
                 layer = self.dsl[dsn].GetLayerByIndex(index)
                 name = layer.GetLayerDefn().GetName()

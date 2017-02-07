@@ -5,16 +5,16 @@ CREATE TABLE public.test_pt (
   CONSTRAINT test_pt_pk PRIMARY KEY (ogc_fid)
 );
 
-INSERT INTO public.test_pt (ogc_fid, wkb_geometry, t50_fid) VALUES (0,'010100002033BF0D00DF4F8036E844324111CC00DA45B35241',2436581);
-INSERT INTO public.test_pt (ogc_fid, wkb_geometry, t50_fid) VALUES (1,'010100002033BF0D00263A12DF4A463241E7F6BFC72AB35241',2436576);
-INSERT INTO public.test_pt (ogc_fid, wkb_geometry, t50_fid) VALUES (2,'010100002033BF0D00E9162BE27D463241078522821AB35241',2436577);
-INSERT INTO public.test_pt (ogc_fid, wkb_geometry, t50_fid) VALUES (3,'010100002033BF0D0043860B11CC3F324175632735CFB35241',2436573);
-INSERT INTO public.test_pt (ogc_fid, wkb_geometry, t50_fid) VALUES (4,'010100002033BF0D0048D83E41323F324120C5C22CF0B35241',2436588);
-INSERT INTO public.test_pt (ogc_fid, wkb_geometry, t50_fid) VALUES (5,'010100002033BF0D005EDF89DBDD3F3241C9A43C5ED8B35241',2436574);
-INSERT INTO public.test_pt (ogc_fid, wkb_geometry, t50_fid) VALUES (6,'010100002033BF0D00F3139A627C3F3241D1C74B15EDB35241',2436587);
-INSERT INTO public.test_pt (ogc_fid, wkb_geometry, t50_fid) VALUES (7,'010100002033BF0D0048B57376DF403241D5CACD3CBEB35241',2436575);
-INSERT INTO public.test_pt (ogc_fid, wkb_geometry, t50_fid) VALUES (8,'010100002033BF0D008285F19CF540324174FECE89B0B35241',2436572);
-INSERT INTO public.test_pt (ogc_fid, wkb_geometry, t50_fid) VALUES (9,'010100002033BF0D002F095747BD3D32419766B4F649B45241',2436584);
+INSERT INTO public.test_pt (ogc_fid, wkb_geometry, t50_fid) VALUES (0,ST_GeomFromText('POINT(-71.060316 48.432044)',4326),2436581);
+INSERT INTO public.test_pt (ogc_fid, wkb_geometry, t50_fid) VALUES (1,ST_GeomFromText('POINT(-71.060317 48.432044)',4326),2436576);
+INSERT INTO public.test_pt (ogc_fid, wkb_geometry, t50_fid) VALUES (2,ST_GeomFromText('POINT(-71.060318 48.432044)',4326),2436577);
+INSERT INTO public.test_pt (ogc_fid, wkb_geometry, t50_fid) VALUES (3,ST_GeomFromText('POINT(-71.060319 48.432044)',4326),2436573);
+INSERT INTO public.test_pt (ogc_fid, wkb_geometry, t50_fid) VALUES (4,ST_GeomFromText('POINT(-71.060316 48.432045)',4326),2436588);
+INSERT INTO public.test_pt (ogc_fid, wkb_geometry, t50_fid) VALUES (5,ST_GeomFromText('POINT(-71.060316 48.432046)',4326),2436574);
+INSERT INTO public.test_pt (ogc_fid, wkb_geometry, t50_fid) VALUES (6,ST_GeomFromText('POINT(-71.060316 48.432047)',4326),2436587);
+INSERT INTO public.test_pt (ogc_fid, wkb_geometry, t50_fid) VALUES (7,ST_GeomFromText('POINT(-71.060316 48.432048)',4326),2436575);
+INSERT INTO public.test_pt (ogc_fid, wkb_geometry, t50_fid) VALUES (8,ST_GeomFromText('POINT(-71.060316 48.432049)',4326),2436572);
+INSERT INTO public.test_pt (ogc_fid, wkb_geometry, t50_fid) VALUES (9,ST_GeomFromText('POINT(-71.060316 48.432040)',4326),2436584);
 
 CREATE TABLE public.new_test_pt (  
   ogc_fid integer NOT NULL,
@@ -23,13 +23,14 @@ CREATE TABLE public.new_test_pt (
   CONSTRAINT new_test_pt_pk PRIMARY KEY (ogc_fid)
 );
 
-INSERT INTO public.new_test_pt (ogc_fid, wkb_geometry, t50_fid) VALUES (10,'010100002033BF0D00DF4F8036E844324111CC00DA45B35241',2436581);
-INSERT INTO public.new_test_pt (ogc_fid, wkb_geometry, t50_fid) VALUES (11,'010100002033BF0D00263A12DF4A463241E7F6BFC72AB35241',2436576);
-INSERT INTO public.new_test_pt (ogc_fid, wkb_geometry, t50_fid) VALUES (12,'010100002033BF0D00E9162BE27D463241078522821AB35241',2436577);
-INSERT INTO public.new_test_pt (ogc_fid, wkb_geometry, t50_fid) VALUES (13,'010100002033BF0D0043860B11CC3F324175632735CFB35241',2436573);
-INSERT INTO public.new_test_pt (ogc_fid, wkb_geometry, t50_fid) VALUES (14,'010100002033BF0D0048D83E41323F324120C5C22CF0B35241',2436588);
-INSERT INTO public.new_test_pt (ogc_fid, wkb_geometry, t50_fid) VALUES (15,'010100002033BF0D005EDF89DBDD3F3241C9A43C5ED8B35241',2436574);
-INSERT INTO public.new_test_pt (ogc_fid, wkb_geometry, t50_fid) VALUES (16,'010100002033BF0D00F3139A627C3F3241D1C74B15EDB35241',2436587);
-INSERT INTO public.new_test_pt (ogc_fid, wkb_geometry, t50_fid) VALUES (17,'010100002033BF0D0048B57376DF403241D5CACD3CBEB35241',2436575);
-INSERT INTO public.new_test_pt (ogc_fid, wkb_geometry, t50_fid) VALUES (18,'010100002033BF0D008285F19CF540324174FECE89B0B35241',2436572);
-INSERT INTO public.new_test_pt (ogc_fid, wkb_geometry, t50_fid) VALUES (19,'010100002033BF0D002F095747BD3D32419766B4F649B45241',2436584);
+INSERT INTO public.new_test_pt (ogc_fid, wkb_geometry, t50_fid) VALUES (0,ST_GeomFromText('POINT(-71.060311 48.432044)',4326),2436581);
+INSERT INTO public.new_test_pt (ogc_fid, wkb_geometry, t50_fid) VALUES (1,ST_GeomFromText('POINT(-71.060312 48.432044)',4326),2436576);
+INSERT INTO public.new_test_pt (ogc_fid, wkb_geometry, t50_fid) VALUES (2,ST_GeomFromText('POINT(-71.060313 48.432044)',4326),2436577);
+INSERT INTO public.new_test_pt (ogc_fid, wkb_geometry, t50_fid) VALUES (3,ST_GeomFromText('POINT(-71.060314 48.432044)',4326),2436573);
+INSERT INTO public.new_test_pt (ogc_fid, wkb_geometry, t50_fid) VALUES (4,ST_GeomFromText('POINT(-71.060316 48.432045)',4326),2436588);
+INSERT INTO public.new_test_pt (ogc_fid, wkb_geometry, t50_fid) VALUES (5,ST_GeomFromText('POINT(-71.060316 48.432046)',4326),2436574);
+INSERT INTO public.new_test_pt (ogc_fid, wkb_geometry, t50_fid) VALUES (6,ST_GeomFromText('POINT(-71.060316 48.432047)',4326),2436587);
+INSERT INTO public.new_test_pt (ogc_fid, wkb_geometry, t50_fid) VALUES (7,ST_GeomFromText('POINT(-71.060316 48.432048)',4326),2436575);
+INSERT INTO public.new_test_pt (ogc_fid, wkb_geometry, t50_fid) VALUES (8,ST_GeomFromText('POINT(-71.060316 48.432049)',4326),2436572);
+INSERT INTO public.new_test_pt (ogc_fid, wkb_geometry, t50_fid) VALUES (9,ST_GeomFromText('POINT(-71.060316 48.432040)',4326),2436584);
+

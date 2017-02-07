@@ -220,8 +220,7 @@ class _DS(object):
         try:
             upd = 1 if OVERWRITE else 0
             #ds = self.driver.Open(dsn, upd)
-            print (1000,os.path.dirname(dsn))
-            print (2000,os.path.dirname(__file__))
+            print ('DSN',dsn)
             ds = ogr.Open(dsn, upd)
             if ds is None:
                 raise DatasourceException('Null DS {}'.format(dsn))
@@ -239,6 +238,7 @@ class _DS(object):
         finally:
             pass
             #ogr.UseExceptions()
+        print ('DS',ds)
         return ds
     
     def create(self,dsn):
@@ -326,6 +326,7 @@ class PGDS(_DS):
             for index in range(self.dsl[dsn].GetLayerCount()):
                 layer = self.dsl[dsn].GetLayerByIndex(index)
                 name = layer.GetLayerDefn().GetName()
+                print ('PGLN',name)
                 if name.find(DST_TABLE_PREFIX)==0 \
                 and self._tname(name):
                     #checks if (table)name is part of or in any of the filter items
@@ -422,6 +423,7 @@ class SFDS(_DS):
                 self.dsl = self._getFileDS()
             else:
                 #if fname is a file init this alone
+                fname = os.path.normpath(os.path.join(os.path.dirname(__file__),fname))
                 self.dsl = {fname:self.initalise(fname, True)}
         else:
             self.dsl = self._getFileDS()
@@ -449,6 +451,7 @@ class SFDS(_DS):
             for index in range(self.dsl[dsn].GetLayerCount()):
                 layer = self.dsl[dsn].GetLayerByIndex(index)
                 name = layer.GetLayerDefn().GetName()
+                print ('SFLN',name)
                 #checks if name is part of in any if the filter items
                 if not filt or max([1 if f in name else 0 for f in filt])>0: 
                     srid = self._findSRID(name,layer.GetSpatialRef(),USE_EPSG_WEBSERVICE)

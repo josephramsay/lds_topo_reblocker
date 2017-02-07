@@ -325,6 +325,7 @@ class PGDS(_DS):
         print ('DSL',self.dsl)
         for dsn in self.dsl:
             print ('dsn',dsn)
+            print ('count',self.dsl[dsn].GetLayerCount())
             for index in range(self.dsl[dsn].GetLayerCount()):
                 layer = self.dsl[dsn].GetLayerByIndex(index)
                 name = layer.GetLayerDefn().GetName()

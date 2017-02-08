@@ -34,6 +34,7 @@ testlog = Logger.setup('test')
 
 def config():
     connstr = "PG: dbname='{d}' host='{h}' port='{p}' user='{u}' password='{x}' active_schema={s}"
+    connstr = "PG: dbname='{d}' user='{u}' password='{x}' active_schema={s}"
     p = {'host':'localhost','database':'','port':5432,'username':'','password':'','schema':'public'}
     #TorL = {'travis':{'host':'127.0.0.1','database':'','port':5432,'username':'','password':'','schema':'public'},
     #        'local' :{'host':'<dev.server>','database':'<dev.db>','port':5432,'username':'','password':'','schema':'<dev.schema>'}}

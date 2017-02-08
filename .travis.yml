@@ -21,6 +21,7 @@ install:
   - sudo apt-get install --no-install-recommends postgresql-9.1-postgis-2.1
   - pip install --global-option=build_ext --global-option="-I/usr/include/gdal" GDAL==`gdal-config --version`
   - pip install -r requirements.txt
+  - pip install coveralls
 
 before_script:
   - mv test/database.yml.travis test/database.yml
@@ -32,8 +33,12 @@ before_script:
   - psql -c "select table_name from information_schema.tables where table_schema = 'public';" -U postgres
   - psql -c "select * from public.test_pt" -U postgres
   - psql -c "select * from public.new_test_pt" -U postgres
-  - find . -type f
+  #- find . -type f
 
 script: 
   - python test/testsuite.py
+  
+after_success:
+  - coveralls
+
   

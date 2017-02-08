@@ -33,6 +33,7 @@ before_script:
   - psql -c "select table_name from information_schema.tables where table_schema = 'public';" -U postgres
   - psql -c "select * from public.test_pt" -U postgres
   - psql -c "select * from public.new_test_pt" -U postgres
+  - psql -c "select * from public.new_test_pt" -U test_user
   #- find . -type f
 
 script: 

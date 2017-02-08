@@ -327,7 +327,7 @@ class PGDS(_DS):
             print ('dsn',dsn)
             print ('count',self.dsl[dsn].GetLayerCount())
             print ('show1',self.execute("select table_name from information_schema.tables where table_schema = 'public'",True))
-            print ('show2',self.execute("select table_name from information_schema.tables",True))
+            print ('show2',self.execute("select * from information_schema.tables",True))
             for index in range(self.dsl[dsn].GetLayerCount()):
                 layer = self.dsl[dsn].GetLayerByIndex(index)
                 name = layer.GetLayerDefn().GetName()

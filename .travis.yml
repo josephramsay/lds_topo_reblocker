@@ -30,13 +30,16 @@ before_script:
   - psql -c "grant all privileges on database test_db to test_user;" -U postgres
   - psql -d test_db -c "create extension postgis;" -U postgres
   - psql -d test_db -f test/test_load.sql -U test_user
-  - psql -d test_db -c "select table_name from information_schema.tables where table_schema = 'public';" -U test_user
-  - psql -d test_db -c "select * from public.test_pt" -U test_user
-  - psql -d test_db -c "select * from public.new_test_pt" -U test_user
+  - psql -d test_db -f sql/nbrfnc.sql -U test_user
+  - psql -d test_db -f sql/topoview.sql -U test_user
+  #- psql -d test_db -c "select table_name from information_schema.tables where table_schema = 'public';" -U test_user
+  #- psql -d test_db -c "select * from public.test_pt" -U test_user
+  #- psql -d test_db -c "select * from public.new_test_pt" -U test_user
   #- find . -type f
 
 script: 
-  - python test/testsuite.py
+  #- python test/testsuite.py
+  - coverage run test/testsuite.py
   
 after_success:
   - coveralls

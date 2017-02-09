@@ -33,8 +33,8 @@ from LayerReader import LayerReader, initds, SFDS, PGDS
 testlog = Logger.setup('test')
 
 def config():
-    #connstr = "PG: dbname='{d}' host='{h}' port='{p}' user='{u}' password='{x}' active_schema={s}"
-    connstr = "PG: dbname='{d}' user='{u}' password='{x}' active_schema={s}"
+    connstr = "PG: dbname='{d}' host='{h}' port='{p}' user='{u}' password='{x}' active_schema={s}"
+    #connstr = "PG: dbname='{d}' user='{u}' password='{x}' active_schema={s}"
     p = {'host':'localhost','database':'','port':5432,'username':'','password':'','schema':'public'}
     #TorL = {'travis':{'host':'127.0.0.1','database':'','port':5432,'username':'','password':'','schema':'public'},
     #        'local' :{'host':'<dev.server>','database':'<dev.db>','port':5432,'username':'','password':'','schema':'<dev.schema>'}}
@@ -118,10 +118,12 @@ class Test_1_PGDS(unittest.TestCase):
             res = pgds.read(None)
             self.assertNotEqual(res,{},'No results from PG read')
             self.assertEqual(list(res.keys())[0][1] ,'new_test_pt', 'Error matching PG layerlist keys')
-            
+
+
 class Test_2_SFDS(unittest.TestCase):
 
     DEF_TEST_SHP = '../CropRegions.shp'
+    
     def setUp(self):
         self.sfds = SFDS(self.DEF_TEST_SHP)
 
@@ -136,7 +138,21 @@ class Test_2_SFDS(unittest.TestCase):
             res = sfds.read(None)
             self.assertNotEqual(res,{},'No results from SF read')
             self.assertEqual(list(res.keys())[0][1] ,'CropRegions', 'Error matching SF layerlist keys')
-        
+
+
+# class Test_3_ReadWrite(unittest.TestCase):
+#     
+#     def test10_s2p(self):
+#         with PGDS(config()) as pxds:
+#             with SFDS(self.DEF_TEST_SHP) as sfds:
+#                 lr = LayerReader(pxds,sfds)   
+#             
+#     def test20_p2s(self):
+#         with SFDS(self.DEF_TEST_SHP) as sfds:
+#             with PGDS(config()) as pxds:
+#                 lr = LayerReader(pxds,sfds)   
+
+
         
 if __name__ == "__main__":
     unittest.main()

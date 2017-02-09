@@ -220,7 +220,7 @@ class _DS(object):
         try:
             upd = 1 if OVERWRITE else 0
             #ds = self.driver.Open(dsn, upd)
-            print ('DSN',dsn)
+            #print ('DSN',dsn)
             ds = ogr.Open(dsn, upd)
             if ds is None:
                 raise DatasourceException('Null DS {}'.format(dsn))
@@ -238,7 +238,7 @@ class _DS(object):
         finally:
             pass
             #ogr.UseExceptions()
-        print ('DS',ds)
+        #print ('DS',ds)
         return ds
     
     def create(self,dsn):
@@ -322,16 +322,14 @@ class PGDS(_DS):
     def read(self,filt):
         '''Read PG tables'''
         layerlist = {}
-        print ('DSL',self.dsl)
+        #print ('DSL',self.dsl)
         for dsn in self.dsl:
-            print ('dsn',dsn)
-            print ('count',self.dsl[dsn].GetLayerCount())
-            print ('show1',self.execute("select table_name from information_schema.tables where table_schema = 'public'",True))
-            print ('show2',self.execute("select * from information_schema.tables",True))
+            #print ('dsn',dsn)
+            #print ('count',self.dsl[dsn].GetLayerCount())
             for index in range(self.dsl[dsn].GetLayerCount()):
                 layer = self.dsl[dsn].GetLayerByIndex(index)
                 name = layer.GetLayerDefn().GetName()
-                print ('PGLN',name)
+                #print ('PGLN',name)
                 if name.find(DST_TABLE_PREFIX)==0 \
                 and self._tname(name):
                     #checks if (table)name is part of or in any of the filter items
@@ -433,6 +431,9 @@ class SFDS(_DS):
         else:
             self.dsl = self._getFileDS()
             
+    def _getprefs(self):
+        return []
+    
     def connstr(self):
         #TODO do something intelligent here like read from a def dir?
         return 'shapefile.shp'
@@ -456,7 +457,7 @@ class SFDS(_DS):
             for index in range(self.dsl[dsn].GetLayerCount()):
                 layer = self.dsl[dsn].GetLayerByIndex(index)
                 name = layer.GetLayerDefn().GetName()
-                print ('SFLN',name)
+                #print ('SFLN',name)
                 #checks if name is part of in any if the filter items
                 if not filt or max([1 if f in name else 0 for f in filt])>0: 
                     srid = self._findSRID(name,layer.GetSpatialRef(),USE_EPSG_WEBSERVICE)

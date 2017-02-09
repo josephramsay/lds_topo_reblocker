@@ -1,6 +1,8 @@
 # lds_topo_reblocker - README
 
-[![Coverage Status](https://coveralls.io/repos/github/josephramsay/lds_topo_reblocker/badge.svg?branch=master)](https://coveralls.io/github/josephramsay/lds_topo_reblocker?branch=master)
+.. image:: https://travis-ci.org/josephramsay/lds_topo_reblocker.svg?branch=master
+
+.. image:: https://coveralls.io/repos/github/josephramsay/lds_topo_reblocker/badge.svg?branch=master
 
 The lds_topo_reblocker combines vector layers across mapsheet boundaries
 

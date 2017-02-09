@@ -1,8 +1,0 @@
-postgres:
-  adapter: postgresql
-  host: devassgeo01
-  database: test_db
-  port: 5432
-  schema: public
-  username: test_user
-  password: test_password

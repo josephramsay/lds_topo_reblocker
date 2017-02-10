@@ -25,21 +25,15 @@ import re
 import os
 
 from LayerReader_Test import *
+from ReblockerUI_Test import *
 #import LayerReader_Test 
 
 def suite():
-    suite = unittest.TestSuite()
-    suite.addTest(Test_0_LayerReaderSelfTest())
-    suite.addTest(Test_1_LayerReaderConfigTest())
-    #suite.addTest(LayerReader_Test("Test_0_LayerReaderSelfTest"))
-    #suite.addTest(LayerReader_Test("Test_1_LayerReaderConfigTest"))
+    suite = unittest.TestLoader()
+    suite.loadTestsFromTestCase(LayerReader_Test)
+    suite.loadTestsFromTestCase(ReblockerUI_Test)
+    
     return suite
-
-
-# TL1 = ('Test_0_LayerReaderSelfTest','Test_1_LayerReaderConfigTest')
-# class LayerReaderTestSuite(unittest.TestSuite):
-#     def __init__(self):
-#         unittest.TestSuite.__init__(self,map(LayerReader_Test,TL1))
     
     
 if __name__ == "__main__":

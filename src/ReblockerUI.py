@@ -113,15 +113,16 @@ class WidgetLogger(logging.Handler):
 
 class RUI(object):
     
-    def __init__(self, master=None):
+    def __init__(self, callback=None):
         
         self.config = ConfigReader()
         self.dirname = self.config.remote_path or DEF_PATH
-        self.initGUI()
+        self.initGUI(callback)
 
-    def initGUI(self):
+    def initGUI(self,callback=None):
         self.master = TK.Tk()
         self.master.wm_title('ReblockerUI')
+        self.setCallback(callback)
         
         self.menubar = TK.Menu(self.master)
 
@@ -144,6 +145,9 @@ class RUI(object):
         self.master.config(menu=self.menubar)
         self.master.mainloop()
 
+    def setCallback(self,callback,timer=1000):
+        if callback: self.master.after(timer,callback)
+        
     def initMenus(self):
         filemenu = TK.Menu(self.menubar, tearoff=0)
         filemenu.add_command(label="Select", command=self.select)

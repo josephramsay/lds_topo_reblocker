@@ -49,7 +49,7 @@ def config():
     return connstr.format(h=p['host'],d=p['database'],p=p['port'],u=p['username'],x=p['password'],s=p['schema'])
 
 
-class Test_0_LayerReaderSelfTest(unittest.TestCase):
+class Test_00_LayerReaderSelfTest(unittest.TestCase):
     
     def setUp(self):
         pass
@@ -57,17 +57,17 @@ class Test_0_LayerReaderSelfTest(unittest.TestCase):
     def tearDown(self):
         pass
     
-    def test10_selfTest(self):
+    def test_10_selfTest(self):
         #assertIsNotNone added in 3.1
         self.assertNotEqual(testlog,None,'Testlog not instantiated')
         testlog.debug('LayerReader_Test Log')
     
-    def test20_layerReaderInit(self):
+    def test_20_layerReader_Init(self):
         #assertIsNotNone added in 3.1        
         testlog.debug('Test_0.20 LayerReader instantiation test')
         self.assertNotEqual(LayerReader(None,None),None,'LayerReader not instantiated')
         
-class Test_4_LayerReaderConfigTest(unittest.TestCase):    
+class Test_40_LayerReader_ConfigTest(unittest.TestCase):    
     '''Test LayerReader functions'''
         
     def setUp(self):
@@ -77,13 +77,10 @@ class Test_4_LayerReaderConfigTest(unittest.TestCase):
     def tearDown(self):
         self.layerreader = None
         
-    def test10_layerReaderInit(self):
-        self.assertNotEqual(self.layerreader,None,'LayerReader not instantiated')
-        
-    def test20_layerReaderInit(self):
+    def test_10_layerReader_Init(self):
         self.assertNotEqual(self.layerreader,None,'LayerReader not instantiated')
     
-class Test_1_PGDS(unittest.TestCase):
+class Test_10_PGDS(unittest.TestCase):
 
     def setUp(self):
         self.pgds = PGDS(config())
@@ -91,36 +88,36 @@ class Test_1_PGDS(unittest.TestCase):
     def tearDown(self):
         self.pgds = None
 
-    def test10_pgdsInit(self):
+    def test_10_pgds_Init(self):
         self.assertNotEqual(self.pgds, None, 'PG DS not instantiated')
 
-    def test20_pgdsNormalConnect(self):
+    def test_20_pgds_NormalConnect(self):
         self.pgds.connect()
         self.assertNotEqual(self.pgds.cur, None, 'PG Cursor not instantiated')
         self.pgds.disconnect()
 
-    def test30_pgdsContextConnect(self):
+    def test_30_pgds_ContextConnect(self):
         with PGDS(config()) as pgds:
             self.assertNotEqual(pgds.cur, None, 'PG context Cursor not instantiated')
 
-    def test40_pgdsExecuteTF(self):
+    def test_40_pgds_ExecuteTF(self):
         with PGDS(config()) as pgds:
             res = pgds.execute('select 100', False)
             self.assertEqual(res, True, "Execute doesn't return success")
 
-    def test41_pgdsExecuteRes(self):
+    def test_41_pgds_ExecuteRes(self):
         with PGDS(config()) as pgds:
             res = pgds.execute('select 200', True)
             self.assertEqual(res[0][0], 200, 'Execute returns wrong result')
             
-    def test50_pgdsRead(self):
+    def test_50_pgds_Read(self):
         with PGDS(config()) as pgds:
             res = pgds.read(None)
             self.assertNotEqual(res,{},'No results from PG read')
             self.assertEqual(list(res.keys())[0][1] ,'new_test_pt', 'Error matching PG layerlist keys')
 
 
-class Test_2_SFDS(unittest.TestCase):
+class Test_20_SFDS(unittest.TestCase):
 
     DEF_TEST_SHP = '../CropRegions.shp'
     
@@ -130,17 +127,17 @@ class Test_2_SFDS(unittest.TestCase):
     def tearDown(self):
         self.sfds = None
         
-    def test10_sfdsInit(self):
+    def test_10_sfds_Init(self):
         self.assertNotEqual(self.sfds, None, 'SF DS not instantiated')
         
-    def test20_sfdsRead(self):
+    def test_20_sfds_Read(self):
         with SFDS(self.DEF_TEST_SHP) as sfds:
             res = sfds.read(None)
             self.assertNotEqual(res,{},'No results from SF read')
             self.assertEqual(list(res.keys())[0][1] ,'CropRegions', 'Error matching SF layerlist keys')
 
 
-# class Test_3_ReadWrite(unittest.TestCase):
+# class Test_30_ReadWrite(unittest.TestCase):
 #     
 #     def test10_s2p(self):
 #         with PGDS(config()) as pxds:

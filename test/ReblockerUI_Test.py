@@ -36,9 +36,9 @@ from LayerReader_Test import config
 
 testlog = Logger.setup('test')
 
+class UnrecognisedRUICommandException(Exception):pass
 class RUIContainer(RUI):
-    
-    command_list = []
+    '''Override client side ReblockedUI'''
     
     def __init__(self,args):
         self.p2 = args
@@ -46,23 +46,21 @@ class RUIContainer(RUI):
         
     def watch(self):
         if self.p2.poll():
-            self.process(self.p2.recv())
+            self.p2.send(self.process(self.p2.recv()))
         self.setCallback(self.watch)
 
-    def process(self,msg):
-        print(msg)
-        if msg == 'enable_disable':
-            self.enable_disable()
-        elif msg == 'select':
-            self.select()
+    def process(self,attr):
+        '''Check the requested method exists and call it with no args'''
+        if attr in [i for i,_ in inspect.getmembers(self, predicate=inspect.ismethod)]:
+            return getattr(self,attr)()
         else:
-            print('command {} not recognised'.format(msg))
-            return
-        self.command_list.append(msg)
-        
+            raise UnrecognisedRUICommandException('Unknown command {}'.format(attr))
 
+        
+class ReceiveResponseException(Exception):pass
 class ProcessWrapper(Process):
-    
+    timeout = 2
+    retries = 1
     p1, p2 = Pipe()
     
     def __init__(self,name='ReblockerUI_pw',proc=RUIContainer):
@@ -71,11 +69,23 @@ class ProcessWrapper(Process):
         self.start()
 
     def quit(self):
-        self.join(timeout=1)
+        self.join(timeout=self.timeout)
         
     def send(self,command):
         self.p1.send(command)
         
+    def recv(self,tc=None,rc=None):
+        '''Receive a result from the pipe, wait tc (s) and retry rc times'''
+        r = 0
+        if rc == None: rc = self.retries
+        tc = tc or self.timeout
+        while r<=rc:
+            if self.p1.poll(timeout=tc):
+                return self.p1.recv()
+            r += 1
+        #Bypass exception by setting 0 retries in case where timeout expected e.g. unclicked dialog
+        if rc != 0: raise ReceiveResponseException('No response received after {}s with {} retries'.format(tc,rc))
+
     def __enter__(self):
         return self
     
@@ -115,23 +125,30 @@ class Test_10_ReblockerUI_StaticTest(unittest.TestCase):
     
     def test_10_ReblockerUI_RPW(self):
          #assertIsNotNone added in 3.1
-         testlog.debug('Test_0.20 ReblockerUI instantiation test')
-         self.assertEqual(isinstance(self.rpw._target,type(RUI)), True,'Testlog not instantiated')
-         self.assertNotEqual(self.rpw._target,RUI,'Testlog not instantiated')    
+         testlog.debug('Test 10.10 ReblockerUI RPW test')
+         self.assertEqual(isinstance(self.rpw._target,type(RUI)), True,'Processwrapper _target != ReblockerUI type')
+         self.assertNotEqual(self.rpw._target,RUI,'Processwrapper _target = new ReblockerUI')    
         
-    def test_20_ReblockerUI_enabledisable(self):
+    def test_20_ReblockerUI_static(self):
         #assertIsNotNone added in 3.1
-        testlog.debug('Test_0.20 ReblockerUI instantiation test')
+        L = (('enable_disable',2,1,True),('select',5,0,None))
+        testlog.debug('Test 10.20 ReblockerUI Static control test')
+
+        for cmd,t,r,req in L:
+            self.rpw.send(cmd)
+            res = self.rpw.recv(tc=t,rc=r)
+            self.assertEqual(res,req,'Command {}()={} failed with {}'.format(cmd,req,res))
         
-        self.rpw.send('ERROR_COMMAND')
-        time.sleep(2)
-        self.rpw.send('enable_disable')
-        time.sleep(2)
-        self.rpw.send('select')
-        
-        self.assertEqual(True,True,'Testlog not instantiated')    
-    
-            
-        
+#     def test_30_ReblockerUI_dynamic(self):
+#         '''Cannot fully test this as it requires a live instance of the LINZ data service'''
+#         L = (('remove',2,2,True),('release',2,2,True),('upload',2,2,True),('reblock',2,2,None))
+#         
+#         testlog.debug('Test 10.30 ReblockerUI Dynamic control test')
+#         
+#         for cmd,t,r,req in L:
+#             self.rpw.send(cmd)
+#             self.assertEqual(self.rpw.recv(tc=t,rc=r),req,'Testlog not instantiated')
+
+
 if __name__ == "__main__":
     unittest.main()

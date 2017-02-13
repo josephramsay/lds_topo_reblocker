@@ -17,8 +17,7 @@ from collections import namedtuple
 
 from KPCInterface import KPCUploader as KU
 from Config import ConfigReader
-
-import LayerReader as LR
+from LayerReader import LayerReader as LR
 
 PYVER3 = sys.version_info > (3,)
 
@@ -300,7 +299,7 @@ class RUI(object):
         for fg in self._filter():
             fg = '{}{}{}'.format(self.uiconfig.val_dir,os.path.sep,fg)
             print ('Uploading layer {}'.format(fg))
-            ldsup.upload(fg)
+            return ldsup.upload(fg)
             
     @UIConfigDec   
     def release(self):

@@ -22,9 +22,10 @@ install:
   - pip install --global-option=build_ext --global-option="-I/usr/include/gdal" GDAL==`gdal-config --version`
   - pip install -r requirements.txt
   - pip install coveralls
-  - mkdir ldsapi
-  - git clone https://github.com/josephramsay/LDSAPI.git ldsapi
-  - python ldsapi/setup.py install
+  #- mkdir ldsapi
+  - git clone https://github.com/josephramsay/LDSAPI.git
+  - python setup.py install
+  - echo $PYTHONPATH
   
 before_script:
   - mv test/database.yml.travis test/database.yml

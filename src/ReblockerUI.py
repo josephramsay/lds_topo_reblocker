@@ -9,15 +9,9 @@ import sys
 import logging
 from collections import namedtuple
 
-#from KPCInterface import KPCUploader as KU
-
-#THISF = os.path.normpath(os.path.dirname(__file__))
-#sys.path.append(os.path.abspath(os.path.join(THISF,'../LDS/LDSAPI')))
-#sys.path.append(os.path.abspath("../LDSAPI"))
-
 from KPCInterface import KPCUploader as KU
-from Config import ConfigReader
-from LayerReader import LayerReader as LR
+from .Config import ConfigReader
+from .LayerReader import LayerReader as LR
 
 PYVER3 = sys.version_info > (3,)
 

@@ -5,3 +5,4 @@ koordinates==0.2.0
 PyYAML==3.12
 lxml==3.5.0
 setuptools==20.7.0
+smbc==1.0.15

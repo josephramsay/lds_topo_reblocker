@@ -25,7 +25,7 @@ install:
   - pip install --global-option=build_ext --global-option="-I/usr/include/gdal" GDAL==`gdal-config --version`
   - pip install -r requirements.txt
   - pip install coveralls
-  - pip -e "git clone https://github.com/josephramsay/LDSAPI#egg=LDSAPI"
+  - pip install -e "git+https://github.com/josephramsay/LDSAPI#egg=LDSAPI"
   - echo $PYTHONPATH
   
 before_script:

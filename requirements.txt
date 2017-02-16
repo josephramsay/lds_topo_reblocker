@@ -4,4 +4,4 @@ pycrypto==2.6.1
 koordinates==0.2.0
 PyYAML==3.12
 lxml==3.7.2
-pysmbc==1.0.12
+pysmbc==1.0.15.6

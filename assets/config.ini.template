@@ -16,7 +16,7 @@ path: ~
 ufid: id
     
 [remote]
-#remte staging server information
+#remote staging server information
 server: remote.staging.server
 path: /path
 user: username

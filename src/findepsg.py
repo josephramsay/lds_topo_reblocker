@@ -14,11 +14,11 @@ def esriprj2standards(shapeprj_path):
    prj_txt = prj_file.read()
    srs = osr.SpatialReference()
    srs.ImportFromESRI([prj_txt])
-   print 'Shape prj is: %s' % prj_txt
-   print 'WKT is: %s' % srs.ExportToWkt()
-   print 'Proj4 is: %s' % srs.ExportToProj4()
+   print ('Shape prj is: %s' % prj_txt)
+   print ('WKT is: %s' % srs.ExportToWkt())
+   print ('Proj4 is: %s' % srs.ExportToProj4())
    srs.AutoIdentifyEPSG()
-   print 'EPSG is: %s' % srs.GetAuthorityCode(None)
+   print ('EPSG is: %s' % srs.GetAuthorityCode(None))
 
 
 
@@ -34,7 +34,7 @@ def wsprj2epsg(shapeprj_path):
     prj_file = open(shapeprj_path, 'r')
     prj_txt = prj_file.read()
     ue_txt = uu+urllib.quote(prj_txt)
-    print ue_txt
+    print (ue_txt)
     
     handlers = [
             urllib2.HTTPHandler(),
@@ -49,7 +49,7 @@ def wsprj2epsg(shapeprj_path):
         res = urllib2.urlopen(ue_txt)#,data)
         return int(json.loads(res.read())['codes'][0]['code'])
     except HTTPError as he:
-        print 'SRS WS Convert Error {0}'.format(he)
+        print ('SRS WS Convert Error {0}'.format(he))
 
 
     

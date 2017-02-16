@@ -17,14 +17,15 @@ before_install:
   - sudo apt-get remove postgresql-9.1-postgis-2.1 # Remove postgis from pgdg, will install postgis from ubuntugis-unstable instead
   
 install:
+  #- mkdir ldsapi
+  #- git clone https://github.com/josephramsay/LDSAPI.git ldsapi
+  #- python ldsapi/setup.py install
   - sudo apt-get install libgdal-dev libgdal1h
   - sudo apt-get install --no-install-recommends postgresql-9.1-postgis-2.1
   - pip install --global-option=build_ext --global-option="-I/usr/include/gdal" GDAL==`gdal-config --version`
   - pip install -r requirements.txt
   - pip install coveralls
-  - mkdir ldsapi
-  - git clone https://github.com/josephramsay/LDSAPI.git ldsapi
-  - python ldsapi/setup.py install
+  - pip -e "git clone https://github.com/josephramsay/LDSAPI#egg=LDSAPI"
   - echo $PYTHONPATH
   
 before_script:

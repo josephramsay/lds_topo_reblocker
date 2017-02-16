@@ -1,8 +1,8 @@
 psycopg2==2.6.2
-Twisted==16.0.0
+Twisted==17.1.0
 pycrypto==2.6.1
 koordinates==0.2.0
 PyYAML==3.12
-lxml==3.5.0
-setuptools==20.7.0
-smbc==1.0.15
+lxml==3.7.2
+setuptools==34.2.0
+pysmbc==1.0.15.6

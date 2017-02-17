@@ -80,7 +80,7 @@ class ProcessWrapper(Process):
         if rc == None: rc = self.retries
         tc = tc or self.timeout
         while r<=rc:
-            if self.p1.poll(timeout=tc):
+            if self.p1.poll(tc):#timeout=tc):#timeout keyword doesnt work on py2.7
                 return self.p1.recv()
             r += 1
         #Bypass exception by setting 0 retries in case where timeout expected e.g. unclicked dialog

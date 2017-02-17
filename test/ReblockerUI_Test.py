@@ -131,7 +131,7 @@ class Test_10_ReblockerUI_StaticTest(unittest.TestCase):
         
     def test_20_ReblockerUI_static(self):
         #assertIsNotNone added in 3.1
-        L = (('enable_disable',2,1,True),('select',5,0,None))
+        L = (('enable_disable',30,0,True),('select',30,0,None))
         testlog.debug('Test 10.20 ReblockerUI Static control test')
 
         for cmd,t,r,req in L:

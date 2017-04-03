@@ -1,0 +1,8 @@
+---
+
+pgdg_src_repository: deb-src http://apt.postgresql.org/pub/repos/apt/ {{ ansible_distribution_release }}-pgdg main
+
+pldebugger_repository: https://git.postgresql.org/git/pldebugger.git
+plprofiler_repository: https://bitbucket.org/openscg/plprofiler.git
+
+pgsql_config_dir: /etc/postgresql/conf.d

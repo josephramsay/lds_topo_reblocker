@@ -524,26 +524,43 @@ class Reporter(object):
 #   -----------------------------------------------------------------------------------------------
 
 class CredsReader(object):
+    '''Class reading named credentials file contains KV pairs, provides conveninece UP, HP and API'''
+    
     @classmethod
     def userpass(cls,upfile):
         return (cls.searchfile(upfile,'username'),cls.searchfile(upfile,'password'))
+    
     @classmethod
     def hostport(cls,upfile):
         return (cls.searchfile(upfile,'host'),cls.searchfile(upfile,'port'))
+    
     @classmethod
     def apikey(cls,kfile):
         return cls.searchfile(kfile,'key')
+    
     @classmethod
     def creds(cls,cfile):
         '''Read CIFS credentials file'''
         return (cls.searchfile(cfile,'username'),cls.searchfile(cfile,'password'),cls.searchfile(cfile,'domain','WGRP'))
+    
     @classmethod
     def searchfile(cls,sfile,skey,default=None):
-        with open(sfile,'r') as h:
-            for line in h.readlines():
-                k = re.search('^{key}=(.*)$'.format(key=skey),line)
-                if k: return k.group(1)
+        try:
+            with open(sfile,'r') as h:
+                for line in h.readlines():
+                    k = re.search('^{key}=(.*)$'.format(key=skey),line)
+                    if k: return k.group(1)
+        except FileNotFoundError as fnfe:
+            return CredsReader._walk(sfile,skey,default,'..')
         return default
+
+    @classmethod
+    def _walk(cls,sfile,skey,default,dir):
+        '''Simple directory walker looking for named file in all sub dirs'''
+        for p,d,f in os.walk(dir):
+            if sfile in f: 
+                return CredsReader.searchfile(os.path.join(p,sfile), skey, default)
+        raise FileNotFoundError('File not found during directory walk of {}'.format(dir))
 
 def initds(ds,arg=None):
     '''load an initial DS (for example a postgres connection) if required'''
@@ -670,7 +687,7 @@ def convertImpl(spath,layer,ufidname,actionflag,selectflag,loadcropregions):
         lr = LayerReader(initds(SFDS,'CropRegions.shp'),initds(PXDS))
         lr.transfer()        
              
-    #read shapefiles into DB and call reblocker 
+    # UPLOAD. Transfer shapefiles up to DB and call reblocker 
     if actionflag & 1:
         print ('Transfer Shape -> PostgreSQL')
         with SFDS(spath) as sfds:
@@ -680,6 +697,7 @@ def convertImpl(spath,layer,ufidname,actionflag,selectflag,loadcropregions):
         #lr = LayerReader(initds(SFDS,spath),initds(PXDS))
         #inlayers = [k[1] for k in lr.transfer(layer)]
     
+    # REBLOCK
     if actionflag & 4:
         print ('Reblock PG Layers')
         with PXDS() as pxds:
@@ -690,7 +708,7 @@ def convertImpl(spath,layer,ufidname,actionflag,selectflag,loadcropregions):
         #lchoose = layer if layer else (inlayers if selectflag else None)
         #lr.reblock(u=ufidname,l=lchoose,o=OVERWRITE)
         
-    #write reblocked tables out to shapefile
+    # DOWNLOAD. Write reblocked tables out to shapefile
     if actionflag & 2:
         print ('Transfer PostgreSQL -> Shape')
         with SFDS(spath) as sfds:

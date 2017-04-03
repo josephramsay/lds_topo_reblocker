@@ -1,0 +1,339 @@
+---
+
+################################################################################
+#
+# Copyright 2013 Crown copyright (c)
+# Land Information New Zealand and the New Zealand Government.
+# All rights reserved
+#
+# This program is released under the terms of the new BSD license. See the
+# LICENSE file for more information.
+#
+################################################################################
+
+- name: Install packages
+  apt:
+    pkg: "{{ item }}"
+    force: yes
+    install_recommends: no
+    state: latest
+  with_items:
+    - cifs-utils
+    - linz-bde-uploader
+    - linz-lds-bde-schema
+    - linz-lds-bde-private
+  environment: "{{ apt_proxy }}"
+  become: yes
+
+
+### DATABASE TEMPLATE
+- name: Remove template status from BDE template database
+  command: >
+    psql
+    -v ON_ERROR_STOP=yes
+    -c "UPDATE pg_database SET datistemplate='false' WHERE datname='{{ item }}';"
+  with_items:
+    - template_bde
+  become: yes
+  become_user: postgres
+
+- name: Drop BDE template database
+  postgresql_db:
+    name: "{{ item }}"
+    state: absent
+  with_items:
+    - template_bde
+  become: yes
+  become_user: postgres
+
+
+# template_bde
+- name: Create BDE template database
+  postgresql_db:
+    name: template_bde
+    encoding: 'UTF-8'
+    template: template_postgis
+    state: present
+  become: yes
+  become_user: postgres
+
+- name: Install BDE schema to BDE template
+  command: >
+    psql
+    -v ON_ERROR_STOP=yes
+    -d template_bde
+    -f "{{ item }}"
+  with_items:
+    - /usr/share/linz-bde-schema/sql/01-bde_roles.sql
+    - /usr/share/linz-bde-schema/sql/02-bde_schema.sql
+    - /usr/share/linz-bde-schema/sql/03-bde_functions.sql
+    - /usr/share/linz-bde-schema/sql/05-bde_version.sql
+    - /usr/share/linz-bde-schema/sql/99-patches.sql
+  become: yes
+  become_user: postgres
+
+- name: Install LDS BDE schema to BDE template
+  shell: >
+    for file in /usr/share/linz-lds-bde-schema/sql/*.sql; do
+    psql
+    -v ON_ERROR_STOP=yes
+    -d template_bde
+    -f $file
+    -v ON_ERROR_STOP=1;
+    done
+  become: yes
+  become_user: postgres
+
+- name: Install LDS private BDE schema to BDE template
+  shell: >
+    for file in /usr/share/linz-lds-bde-private/sql/*.sql; do
+    psql
+    -v ON_ERROR_STOP=yes
+    -d template_bde
+    -f $file
+    -v ON_ERROR_STOP=1;
+    done
+  become: yes
+  become_user: postgres
+
+- name: Install BDE uploader to BDE template
+  shell: >
+    for file in /usr/share/linz-bde-uploader/sql/*.sql; do
+    psql
+    -v ON_ERROR_STOP=yes
+    -d template_bde
+    -f $file
+    -v ON_ERROR_STOP=1;
+    done
+  become: yes
+  become_user: postgres
+
+
+- name: Set owner of all objects in BDE template
+  command: >
+    psql
+    -v ON_ERROR_STOP=yes
+    -d template_bde
+    -c "REASSIGN OWNED BY dba TO bde_dba;;"
+  become: yes
+  become_user: postgres
+
+
+- name: Grant permissions for extra BDE template schemas
+  postgresql_privs:
+    db: template_bde
+    type: schema
+    roles: bde_admin,bde_user
+    privs: USAGE
+    objs: _patches,table_version
+    state: present
+  become: yes
+  become_user: postgres
+
+
+- name: Grant bde_admin permissions for tables in extra BDE template schemas
+  postgresql_privs:
+    db: template_bde
+    type: table
+    roles: bde_admin
+    privs: SELECT,UPDATE,INSERT,DELETE
+    objs: ALL_IN_SCHEMA
+    schema: "{{ item }}"
+    state: present
+  with_items:
+    - _patches
+    - table_version
+  become: yes
+  become_user: postgres
+
+- name: Grant bde_user permissions for tables in extra BDE template schemas
+  postgresql_privs:
+    db: template_bde
+    type: table
+    roles: bde_user
+    privs: SELECT
+    objs: ALL_IN_SCHEMA
+    schema: "{{ item }}"
+    state: present
+  with_items:
+    - _patches
+    - table_version
+  become: yes
+  become_user: postgres
+
+
+- name: Grant bde_admin permissions for sequences in extra BDE template schemas
+  postgresql_privs:
+    db: template_bde
+    type: sequence
+    roles: bde_admin
+    privs: ALL
+    objs: ALL_IN_SCHEMA
+    schema: "{{ item }}"
+    state: present
+  with_items:
+    - _patches
+    - table_version
+  become: yes
+  become_user: postgres
+
+- name: Grant bde_user permissions for sequences in extra BDE template schemas
+  postgresql_privs:
+    db: template_bde
+    type: sequence
+    roles: bde_user
+    privs: SELECT
+    objs: ALL_IN_SCHEMA
+    schema: "{{ item }}"
+    state: present
+  with_items:
+    - _patches
+    - table_version
+  become: yes
+  become_user: postgres
+
+
+# finish
+- name: Set template status to BDE template database
+  command: >
+    psql
+    -v ON_ERROR_STOP=yes
+    -c "UPDATE pg_database SET datistemplate='true' WHERE datname='{{ item }}';"
+  with_items:
+    - template_bde
+  become: yes
+  become_user: postgres
+
+- name: Do not accept any connections to BDE template database
+  command: >
+    psql
+    -v ON_ERROR_STOP=yes
+    -c "UPDATE pg_database SET datallowconn='false' WHERE datname='{{ item }}';"
+  with_items:
+    - template_bde
+  become: yes
+  become_user: postgres
+
+
+### USER ACCOUNTS
+- name: Create BDE system user account
+  user:
+    name: bde
+    comment: BDE Maintainer
+    system: yes
+    state: present
+  become: yes
+
+- name: Install BDE user sudoers configuration
+  template:
+    src: sudoers/sudoers.j2
+    dest: /etc/sudoers.d/bde-processor-bde_upload
+    mode: 0440
+  become: yes
+
+
+- name: Create BDE database role
+  postgresql_user:
+    name: bde
+    role_attr_flags: LOGIN,INHERIT,NOSUPERUSER,NOCREATEDB,NOCREATEROLE
+    state: present
+  become: yes
+  become_user: postgres
+
+- name: Grant BDE database role privileges
+  postgresql_privs:
+    db: postgres
+    type: group
+    objs: bde_dba
+    roles: bde
+    grant_option: yes
+    state: present
+  become: yes
+  become_user: postgres
+
+- name: Set search_path to BDE database role
+  command: >
+    psql
+    -v ON_ERROR_STOP=yes
+    -c "ALTER ROLE bde SET search_path=bde, bde_control, public;"
+  become: yes
+  become_user: postgres
+
+
+### CONFIGURATION
+- name: Install BDE uploader configuration
+  template:
+    src: linz_bde_uploader/linz_bde_uploader.conf.j2
+    dest: /etc/linz-bde-uploader/linz_bde_uploader.conf.{{ BDE_DATABASE_NAME }}
+  become: yes
+
+
+### DATABASE
+# BDE database users are hardcoded in BDE tools
+- name: Create BDE database
+  postgresql_db:
+    name: "{{ BDE_DATABASE_NAME }}"
+    owner: bde_dba
+    encoding: 'UTF-8'
+    template: template_bde
+    state: present
+  become: yes
+  become_user: postgres
+
+
+### BDE DATA DIRS
+- name: Create BDE data directory
+  file:
+    path: "{{ BDE_REPOSITORY_DIR }}"
+    owner: bde
+    group: bde
+    state: directory
+    mode: 0755
+  become: yes
+
+- name: Create BDE processor temporary data directory
+  file:
+    path: "{{ BDE_TMP_BASE_DIR }}"
+    owner: bde
+    group: bde
+    state: directory
+    mode: 0755
+  become: yes
+
+
+### LOGGING
+- name: Create BDE processor logging directory
+  file:
+    path: /var/log/linz-bde-uploader
+    owner: bde
+    group: bde
+    mode: 0755
+    state: directory
+  become: yes
+
+
+### SCRIPTS
+- name: Create BDE processor scripts directory
+  file:
+    path: /opt/bde-processor
+    state: directory
+    mode: 0755
+  become: yes
+
+- name: Install BDE processor scripts
+  copy:
+    src: scripts/
+    dest: /opt/bde-processor/
+    mode: 0755
+    force: yes
+  become: yes
+
+
+### JOBS
+- name: Install BDE upload cron jobs
+  template:
+    src: cron/bde_upload.j2
+    dest: /etc/cron.d/bde_upload
+  become: yes
+
+# vim: set ts=2 sts=2 sw=2 et:

@@ -11,7 +11,8 @@ from collections import namedtuple
 
 from KPCInterface import KPCUploader as KU
 from Config import ConfigReader
-from LayerReader import LayerReader as LR
+#from LayerReader 
+import LayerReader as LR
 
 PYVER3 = sys.version_info > (3,)
 

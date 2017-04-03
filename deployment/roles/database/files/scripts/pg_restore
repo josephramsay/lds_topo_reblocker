@@ -1,0 +1,152 @@
+#!/bin/bash
+
+################################################################################
+#
+# PostgreSQL backup restore script.
+#
+# Copyright 2013 Crown copyright (c)
+# Land Information New Zealand and the New Zealand Government.
+# All rights reserved
+#
+# This program is released under the terms of the new BSD license. See the
+# LICENSE file for more information.
+#
+################################################################################
+
+# TODO: validate recovery time format
+#       YYYY-MM-DD HH:MM:SS
+#       $date '+%Y-%m-%d %H:%M:%S'
+# TODO: disable user connections during cluster recovery
+
+set -e
+shopt -s extglob
+
+ddir=/store/postgresql
+xdir=/store/postgresql_xlog
+
+bdir=/store/backup/base
+adir=/store/backup/pgarchive
+
+date=$(date +%Y%m%d-%H%M%S)
+recovery_target_time=${1:-END-OF-WAL-LOG}
+
+
+### CONFIRMATION
+echo "
+You are above to restore whole PostgreSQL database cluster from backup.
+Recovery point in time is '$recovery_target_time'.
+
+Backup of current cluster will be saved in following directories and will be
+available for rollback:
+
+ * '$ddir/backup-$date'
+ * '$xdir/backup-$date'
+
+However, this operation can take very long time and will cause significant down
+time of your database services.
+
+In order to start following conditions must be met:
+
+ * restore script must be executed with superuser (root) permissions
+ * at least three times more free space than expected cluster size must be
+   available on server. Current cluster size is '$(du -hs $ddir | sed 's/\t/ in /g')'
+ * PostgreSQL cluster must be turned off
+"
+
+if [ "$PG_RESTORE_NONINTERACTIVE" != "yes" ]; then
+    echo "Press [ENTER] to confirm to continue, [CTRL-C] to abort.
+    "
+    read
+
+    echo "Measure twice, cut once!"
+    echo "Please confirm again by pressing [ENTER] or [CTRL-C] to abort."
+    read
+fi
+
+
+### SANITY CHECKS
+if [[ $(id -u) -ne 0 ]]; then
+    echo "Must be executed with superuser (root) permissions"
+    exit 1
+fi
+
+if [[ $(service postgresql status | grep -c "online") -ne 0 ]]; then
+    echo "PostgreSQL must be turned off"
+    exit 1
+fi
+
+
+### RESTORE
+echo -e "\nSaving backup in '$ddir/backup-$date' and '$xdir/backup-$date'..."
+mkdir $ddir/backup-$date
+chown postgres:postgres $ddir/backup-$date
+mv $ddir/!(backup-$date) $ddir/backup-$date/
+
+mkdir $xdir/backup-$date
+chown postgres:postgres $xdir/backup-$date
+mv $xdir/!(backup-$date) $xdir/backup-$date/
+
+echo -e "\nRecovering cluster data ..."
+mkdir -p $ddir  # not really needed, it should exist
+chown postgres:postgres $ddir
+chmod 0700 $ddir
+
+# unpack base backup
+tar \
+    -xzf $bdir/postgresql-base.tar.gz \
+    -C $ddir
+
+# move WAL files to dedicated directory
+mv $ddir/pg_xlog/* $xdir/
+rm -r $ddir/pg_xlog
+ln -s $xdir $ddir/pg_xlog
+
+# create PostgreSQL recovery file
+echo "restore_command = 'cp $adir/%f %p'" > $ddir/recovery.conf
+
+# recover to specified point in time
+if [ "$recovery_target_time" != "END-OF-WAL-LOG" ]; then
+    echo "recovery_target_time = '$recovery_target_time'" >> $ddir/recovery.conf
+    echo "recovery_target_inclusive = true" >> $ddir/recovery.conf
+fi
+
+chown postgres:postgres $ddir/recovery.conf
+
+
+### DONE
+echo "
+PostgreSQL database cluster data restore is done !
+
+Now, start cluster recovery process by starting PostgreSQL with
+'$ service postgresql start' command. It can take very long time.
+
+Run '$ service postgresql status' command to inspect cluster status. Output
+similar to following means that recovery is done:
+
+9.3/main (port 5432): online
+
+
+ROLLBACK
+In case things went wrong, it is possible to rollback whole process by running
+following commands (with superuser permissions):
+
+$ service postgresql stop
+$ ps aux | grep postgres  # double check if PostgreSQL is turned off
+
+$ shopt -s extglob
+$ rm -r $ddir/!(backup-*)
+$ mv $ddir/backup-$date/* $ddir/
+$ rm -r $ddir/backup-$date
+
+$ rm -r $xdir/!(backup-*)
+$ mv $xdir/backup-$date/* $xdir/
+$ rm -r $xdir/backup-$date
+
+$ service postgresql start
+
+CLEANUP
+Once verified that everything is OK, don't forget to remove old cluster data in
+'$ddir/backup-$date' and '$xdir/backup-$date' directories.
+"
+
+# vim: set ts=4 sts=4 sw=4 et:

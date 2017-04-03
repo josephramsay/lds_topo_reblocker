@@ -1,0 +1,76 @@
+#!/bin/bash
+
+################################################################################
+#
+# Install development version of linz-bde-uploader from source code.
+# Script must be executed from source code root directory.
+#
+# Copyright 2013 Crown copyright (c)
+# Land Information New Zealand and the New Zealand Government.
+# All rights reserved
+#
+# This program is released under the terms of the new BSD license. See the
+# LICENSE file for more information.
+#
+################################################################################
+
+
+# TODO: install BDE data to development database.
+
+set -e
+
+PKGNAME=linz-bde-uploader
+APPDIR=$HOME/apps
+
+
+### SANITY CHECKS
+if [ ! -f "Build.PL" ]; then
+    echo -e "\nMust be executed from '$PKGNAME' source code root directory"
+    exit 1
+fi
+
+
+### DEPLOYMENT
+# install development version
+echo -e "\nInstalling from source code to '$APPDIR' ..."
+mkdir -p $APPDIR
+
+perl Build.PL \
+    --prefix=$APPDIR
+./Build install
+
+
+echo -e "\nInstalling configuration to '/etc/$PKGNAME' ..."
+sudo cp $APPDIR/etc/$PKGNAME/*.conf /etc/$PKGNAME/
+
+
+echo -e "\nInstalling database template ..."
+# allow changes to database template
+psql \
+    -d postgres \
+    -c "UPDATE pg_database
+        SET datallowconn='true'
+        WHERE
+        datname='template_bde';
+    " > /dev/null
+
+# install database template
+for file in $APPDIR/share/linz-bde-uploader/sql/*.sql; do
+    psql \
+    -d template_bde \
+    -f $file \
+    -v ON_ERROR_STOP=1 > /dev/null;
+done
+
+
+# create development database
+echo -e "\nCreating development database 'dev-$PKGNAME' ..."
+dropdb dev-$PKGNAME &> /dev/null || true
+createdb -T template_bde dev-$PKGNAME
+
+
+# final message
+echo -e "\nDone !"
+
+# vim: set ts=4 sts=4 sw=4 et:
+

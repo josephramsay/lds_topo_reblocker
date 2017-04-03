@@ -1,0 +1,9 @@
+---
+
+test_bde_database_name: test_bde_{{ test_id }}
+test_bde_config_dir: /tmp/test_bde_config_{{ test_id }}
+
+test_bde_tmp_base_dir: /tmp/bde
+
+test_bde_data_dir: /vagrant/data/bde
+test_bde_data_url: http://linz-data-bde.s3.amazonaws.com

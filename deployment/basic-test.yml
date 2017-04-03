@@ -1,0 +1,10 @@
+---
+
+- hosts: "{{ HOST_NAME }}"
+  roles:
+    - {
+      role: basic-test,
+      tags: ['basic']
+    }
+
+# vim: set ts=2 sts=2 sw=2 et:

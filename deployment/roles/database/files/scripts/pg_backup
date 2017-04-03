@@ -1,0 +1,75 @@
+#!/bin/bash
+
+################################################################################
+#
+# PostgreSQL backup script to be run as a daily cron job.
+#
+# Creates and stores binary copy of running database cluster and maintains
+# WAL files archive required for point in time recovery between backups.
+#
+# Copyright 2013 Crown copyright (c)
+# Land Information New Zealand and the New Zealand Government.
+# All rights reserved
+#
+# This program is released under the terms of the new BSD license. See the
+# LICENSE file for more information.
+#
+################################################################################
+
+# TODO: print usage
+
+set -e
+
+ddir=/store/postgresql
+xdir=/store/postgresql_xlog
+
+bdir=/store/backup/base
+adir=/store/backup/pgarchive
+
+date=$(date +%Y%m%d-%H%M%S)
+
+
+### SANITY CHECKS
+if [[ $(id -u) -ne 0 ]]; then
+    echo "Must be executed with superuser (root) permissions"
+    exit 1
+fi
+
+if [ "$(sudo -u postgres psql -tAc "SELECT pg_is_in_recovery()")" == "t" ]; then
+    echo -e "\nPostgreSQL cluster is in recovery. Backup aborted !"
+    logger -t pg_backup "PostgreSQL cluster is in recovery. Backup aborted !"
+    exit 1
+fi
+
+
+### BACKUP
+echo -e "\nRunning base backup ..."
+
+# create backup dir
+mkdir -p $bdir
+chown postgres:postgres $bdir
+
+# perform base backup
+sudo -u postgres pg_basebackup \
+    --pgdata=$bdir/$date \
+    --xlog \
+    --format=t \
+    --label=$(hostname -f)-$date \
+    --gzip \
+    --compress=6 \
+    --progress
+
+# store base backup file
+echo -e "\nStoring backup file..."
+mv $bdir/$date/base.tar.gz $bdir/postgresql-base.tar.gz
+rm -r $bdir/$date
+
+
+### CLEANUP
+# clean all WAL files logically preceding the latest base backup
+echo -e "\nCleaning old WAL files..."
+pg_archivecleanup \
+    $adir \
+    $(cd $adir; ls -rt *.backup | tail -1)
+
+# vim: set ts=4 sts=4 sw=4 et:

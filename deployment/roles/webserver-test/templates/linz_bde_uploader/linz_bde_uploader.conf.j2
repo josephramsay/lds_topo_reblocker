@@ -1,0 +1,15 @@
+db_connection dbname={{ test_bde_database_name }}
+bde_repository {{ test_bde_data_dir }}
+tmp_base_dir {{ test_bde_tmp_base_dir }}
+log_settings <<EOF
+EOF
+
+dataset_load_start_sql <<EOT
+SELECT bde_CreateDatasetRevision({{ '{{id}}' }});
+EOT
+
+dataset_load_end_sql <<EOT
+SELECT lds.LDS_MaintainSimplifiedLayers({{ '{{id}}' }});
+SELECT bde_ext.LDS_MaintainAllFBDELayers({{ '{{id}}' }});
+SELECT bde_CompleteDatasetRevision({{ '{{id}}' }});
+EOT

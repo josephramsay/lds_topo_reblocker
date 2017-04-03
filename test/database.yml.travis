@@ -1,0 +1,8 @@
+postgres:
+  adapter: postgresql
+  host: localhost
+  database: test_db
+  port: 5432
+  schema: public
+  username: test_user
+  password: test_password

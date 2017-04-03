@@ -1,0 +1,63 @@
+---
+
+################################################################################
+#
+# Copyright 2013 Crown copyright (c)
+# Land Information New Zealand and the New Zealand Government.
+# All rights reserved
+#
+# This program is released under the terms of the new BSD license. See the
+# LICENSE file for more information.
+#
+################################################################################
+
+- name: Install packages
+  apt:
+    pkg: "{{ item }}"
+    force: yes
+    install_recommends: no
+    state: latest
+  with_items:
+    - devscripts
+    - debhelper
+    - dpkg-dev
+    - cmake
+    - zlib1g-dev
+  environment: "{{ apt_proxy }}"
+  become: yes
+
+
+### SCRIPTS
+- name: Install BDE processor development scripts
+  copy:
+    src: dev/
+    dest: /usr/local/bin/
+    mode: 0755
+    force: yes
+  become: yes
+
+
+### APPS DIRECTORY
+- name: Create directory for development
+  file:
+    path: /home/{{ ansible_user }}/apps
+    state: directory
+    mode: 0755
+
+- name: Add development directory on path
+  lineinfile:
+    dest: /home/{{ ansible_user }}/.profile
+    regexp: "^PATH=/home/{{ ansible_user }}/apps/bin:$PATH"
+    line: "PATH=/home/{{ ansible_user }}/apps/bin:$PATH"
+    insertafter: EOF
+    state: present
+
+- name: Add development Perl modules on path
+  lineinfile:
+    dest: /home/{{ ansible_user }}/.profile
+    regexp: "^PERL5LIB=/home/{{ ansible_user }}/apps/share/perl"
+    line: "PERL5LIB=/home/{{ ansible_user }}/apps/share/perl"
+    insertafter: EOF
+    state: present
+
+# vim: set ts=2 sts=2 sw=2 et:

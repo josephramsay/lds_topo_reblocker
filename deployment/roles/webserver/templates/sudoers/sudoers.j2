@@ -1,0 +1,9 @@
+bde    ALL=(ALL)      NOPASSWD:/bin/mkdir /mnt/*
+bde    ALL=(ALL)      NOPASSWD:/bin/mkdir -p /mnt/*
+
+bde    ALL=(ALL)      NOPASSWD:/bin/mount * /mnt/*
+
+bde    ALL=(ALL)      NOPASSWD:/bin/umount /mnt/*
+bde    ALL=(ALL)      NOPASSWD:/bin/umount -f /mnt/*
+
+bde    ALL=(postgres) NOPASSWD:/usr/bin/psql

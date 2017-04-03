@@ -1,0 +1,4 @@
+MAILTO=root
+
+{{ BDE_UPLOAD_TIME_DAILY }}  bde  nice /opt/bde-processor/bde_upload {{ BDE_DATABASE_NAME }} /etc/linz-bde-uploader/linz_bde_uploader > /dev/null
+{{ BDE_UPLOAD_TIME_WEEKLY }}  bde  nice /opt/bde-processor/bde_upload {{ BDE_DATABASE_NAME }} /etc/linz-bde-uploader/linz_bde_uploader > /dev/null

@@ -1,0 +1,5 @@
+command[check_load]=/usr/lib/nagios/plugins/check_load -w {{ 8 * ansible_processor_cores * ansible_processor_count }},{{ 5 * ansible_processor_cores * ansible_processor_count }},{{ 2 * ansible_processor_cores * ansible_processor_count }} -c {{ 10 * ansible_processor_cores * ansible_processor_count }},{{ 8 * ansible_processor_cores * ansible_processor_count }},{{ 3 * ansible_processor_cores * ansible_processor_count }}
+
+{% for dev in ansible_mounts %}
+command[check_disk_{{ dev.device|regex_replace("^/","")|replace("/", "_") }}]=/usr/lib/nagios/plugins/check_disk -w 20% -c 10% -p {{ dev.mount }}
+{% endfor %}

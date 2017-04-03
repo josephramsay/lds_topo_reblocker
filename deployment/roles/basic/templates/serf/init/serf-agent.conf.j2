@@ -1,0 +1,32 @@
+description "Start Serf cluster agent"
+
+start on (local-filesystems and net-device-up IFACE!=lo)
+stop on runlevel [06]
+
+kill signal INT    # Use SIGINT instead of SIGTERM so serf can depart the cluster.
+respawn
+respawn limit 15 5
+kill timeout 90
+normal exit 0 TERM INT
+
+pre-start script
+    # allow multicast requests using mDNS
+    ip route add 224.0.0.0/4 dev {{ SYSTEM_NETWORK_DEVICE }} | true
+end script
+
+exec serf agent \
+    -discover={{ PROJECT_NAME }} \
+    -bind {{ SYSTEM_IP_ADDRESS }} \
+    -node="{{ ansible_hostname }}" \
+    -tag role={{ ROLE_NAME }} \
+    -event-handler /usr/local/bin/serf-handlers.sh \
+{% if SYSTEM_CLUSTER_KEY|default(False) %}
+    -keyring-file /etc/serf/serf.key \
+{% endif %}
+    -log-level=err \
+    -syslog
+
+post-stop script
+    ip route del 224.0.0.0/4 dev {{ SYSTEM_NETWORK_DEVICE }} | true
+    sleep 3
+end script

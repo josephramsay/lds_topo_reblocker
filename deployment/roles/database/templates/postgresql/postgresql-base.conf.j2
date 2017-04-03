@@ -1,0 +1,22 @@
+### FILE LOCATIONS
+data_directory = '{{ pgsql_data_dir }}'
+
+
+### CONNECTIONS AND AUTHENTICATION
+listen_addresses = '*'
+port = 5432
+
+
+### LOGGING
+logging_collector = on
+log_filename = 'postgresql-%w.log'
+log_file_mode = 0640
+log_truncate_on_rotation = on
+log_rotation_size = 600MB
+log_min_duration_statement = 500
+log_checkpoints = on
+log_connections = on
+log_disconnections = on
+log_duration = on
+log_lock_waits = on
+log_line_prefix = '%t [%p]: [%l-1] db=%d,user=%u,app=%a,client=%h '

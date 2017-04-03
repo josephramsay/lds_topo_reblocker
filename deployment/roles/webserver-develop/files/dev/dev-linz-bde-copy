@@ -1,0 +1,49 @@
+#!/bin/bash
+
+################################################################################
+#
+# Install development version of linz-bde-copy from source code.
+# Script must be executed from source code root directory.
+#
+# Copyright 2013 Crown copyright (c)
+# Land Information New Zealand and the New Zealand Government.
+# All rights reserved
+#
+# This program is released under the terms of the new BSD license. See the
+# LICENSE file for more information.
+#
+################################################################################
+
+
+set -e
+
+PKGNAME=linz-bde-copy
+APPDIR=$HOME/apps
+
+
+### SANITY CHECKS
+if [ ! -f "CMakeLists.txt" ]; then
+    echo -e "\nMust be executed from '$PKGNAME' source code root directory"
+    exit 1
+fi
+
+
+### DEPLOYMENT
+# build development version
+echo -e "\nBuilding from source ..."
+mkdir -p build
+cd build
+cmake -DCMAKE_INSTALL_PREFIX=$APPDIR ..
+make
+
+# install development version
+echo -e "\nInstalling from source code to '$APPDIR' ..."
+mkdir -p $APPDIR
+make install
+
+
+# final message
+echo -e "\nDone !"
+
+# vim: set ts=4 sts=4 sw=4 et:
+

@@ -1,7 +1,0 @@
----
-
-some_fake_var: this_is_some_bs
-reblocker_repository: https://github.com/linz/lds_topo_reblocker.git
-
-pldebugger_repository: https://git.postgresql.org/git/pldebugger.git
-plprofiler_repository: https://bitbucket.org/openscg/plprofiler.git

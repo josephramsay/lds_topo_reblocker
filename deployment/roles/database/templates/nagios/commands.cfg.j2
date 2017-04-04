@@ -1,4 +1,0 @@
-command[check_database_running]=sudo -u postgres /usr/lib/nagios/plugins/check_pgsql -q "SELECT 1"
-
-# warning: 7 days + 4 hours, critical: 8 days, at least 1MB of size
-command[check_database_backup]=/usr/lib/nagios/plugins/check_file_age -w 619200 -c 691200 -C 1000000 -f {{ pgsql_backup_dir }}/postgresql-base.tar.gz

@@ -1,8 +1,0 @@
----
-
-pgsql_config_dir: /etc/postgresql/conf.d
-pgsql_data_dir: /store/postgresql
-pgsql_xlog_dir: /store/postgresql_xlog
-
-pgsql_backup_dir: /store/backup/base
-pgsql_archive_dir: /store/backup/pgarchive

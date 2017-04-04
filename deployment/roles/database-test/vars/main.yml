@@ -1,3 +1,0 @@
----
-
-test_db: test_{{ test_id }}

@@ -1,0 +1,45 @@
+---
+
+################################################################################
+#
+# Copyright 2013 Crown copyright (c)
+# Land Information New Zealand and the New Zealand Government.
+# All rights reserved
+#
+# This program is released under the terms of the new BSD license. See the
+# LICENSE file for more information.
+#
+################################################################################
+
+#
+### BASIC SYSTEM TESTS ###
+#
+- name: Install packages required for tests
+  apt:
+    pkg: "{{ item }}"
+    force: yes
+    install_recommends: no
+    state: latest
+  with_items:
+    - git
+    - nagios-nrpe-plugin
+  environment: "{{ apt_proxy }}"
+  become: yes
+
+
+- name: Test if system is up and running
+  shell: uptime
+  changed_when: False
+
+
+### MONITORING
+- name: Test if monitoring queries are working
+  shell: >
+    /usr/lib/nagios/plugins/check_nrpe
+    -H localhost
+    -c {{ item }}
+  with_items:
+    - check_load
+    - "check_disk_{{ ansible_mounts[0].device|regex_replace('^/','')|replace('/', '_') }}"
+
+# vim: set ts=2 sts=2 sw=2 et:

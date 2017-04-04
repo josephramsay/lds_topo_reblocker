@@ -1,3 +1,8 @@
 ---
 
 test_db: test_{{ test_id }}
+rbk_db: reblock
+# permission restricted database shared with crown property for release only
+#rbkv_db: topo_rdb 
+neighbour_func: /home/{{ ansible_user }}/src/lds_topo_reblocker/sql/nbrfnc.sql
+topoview_func: /home/{{ ansible_user }}/src/lds_topo_reblocker/sql/topoview.sql

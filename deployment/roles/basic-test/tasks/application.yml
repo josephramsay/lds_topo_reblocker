@@ -11,7 +11,18 @@
 #
 ################################################################################
 
-- include: base.yml
-- include: application.yml
+#
+### DATABASE SERVICE TESTS ###
+#
+- name: Display all variables/facts known for a host
+  debug:
+    #var: hostvars[inventory_hostname]
+    var: reblocker_repository
 
-# vim: set ts=2 sts=2 sw=2 et:
+### REBLOCKER
+- name: Download reblocker source code
+  git:
+    repo: "{{ reblocker_repository }}"
+    dest: /home/{{ ansible_user }}/src/lds_topo_reblocker
+    version: master
+  environment: "{{ web_proxy }}"

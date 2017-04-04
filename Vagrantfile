@@ -150,7 +150,7 @@ Vagrant.configure(2) do |config|
                             PROJECT_NAME: PROJ,
                             ROLE_NAME: "#{role}",
                             SYSTEM_NETWORK_DEVICE: IFACE,
-                            PARENT_IP: ip_address,
+                            SYSTEM_IPV4_ADDRESS: ip_address,
                         }
 
                         # load password from file if exists
@@ -175,7 +175,7 @@ Vagrant.configure(2) do |config|
                             PROJECT_NAME: PROJ,
                             ROLE_NAME: "#{role}",
                             SYSTEM_NETWORK_DEVICE: IFACE,
-                            PARENT_IP: ip_address,
+                            SYSTEM_IPV4_ADDRESS: ip_address,
                         }
 
                         # load password from file if exists

@@ -32,21 +32,20 @@
 - name: Load encrypted variables file
   include_vars: linz.yml
 
-- name: Show decrypted username
-  debug:
-    var: linz_repository_username  
+#- name: Show decrypted username
+#  debug:
+#    var: linz_repository_username  
 
 #### DEBUG : Print hostvars
-- name: Display all variables/facts known for a host
-  debug:
-    var: hostvars[inventory_hostname]
-
-- name: Display web proxy vars
-  debug:
-    var: web_proxy
-    var: local_proxy
-    var: apt_proxy
-    var: f_proxy
+#- name: Display all variables/facts known for a host
+#  debug:
+#    var: hostvars[inventory_hostname]
+#
+#- name: Display web proxy vars
+#  debug:
+#    var: web_proxy
+#    var: local_proxy
+#    var: apt_proxy
    
 ### VARIABLES
 - name: Set IP address variable

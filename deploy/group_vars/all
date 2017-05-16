@@ -1,0 +1,22 @@
+# DEFAULT CONFIGURATION FILE
+# Place host variables in to 'host_vars/<server-name>' instead of modifying this
+# file.
+
+
+apt_proxy1:
+  http_proxy: "{% if lookup('env','apt_proxy') != '' %}{{ lookup('env','apt_proxy') }}{% else %}{% endif %}"
+  https_proxy: "{% if lookup('env','apt_proxy') != '' %}{{ lookup('env','apt_proxy') }}{% else %}{% endif %}"
+
+web_proxy1:
+  http_proxy: "{% if SYSTEM_PROXY_ADDRESS != '' %}{{ SYSTEM_PROXY_ADDRESS }}{% else %}{% endif %}"
+  https_proxy: "{% if SYSTEM_PROXY_ADDRESS != '' %}{{ SYSTEM_PROXY_ADDRESS }}{% else %}{% endif %}"
+  
+web_proxy:
+    http_proxy: "{% if 'http' in web_proxy1.http_proxy %}{{ web_proxy1.http_proxy }}{% else %}{{ 'http://'+web_proxy1.http_proxy+'/' }}{% endif %}"
+    https_proxy: "{% if 'http' in web_proxy1.https_proxy %}{{ web_proxy1.https_proxy }}{% else %}{{ 'https://'+web_proxy1.https_proxy+'/' }}{% endif %}"
+
+# web_proxy variable is taking precedence over apt_proxy
+apt_proxy:
+  http_proxy: "{% if web_proxy.http_proxy != '' %}{{ web_proxy.http_proxy }}{% else %}{{ apt_proxy1.http_proxy }}{% endif %}"
+  https_proxy: "{% if web_proxy.https_proxy != '' %}{{ web_proxy.https_proxy }}{% else %}{{ apt_proxy1.https_proxy }}{% endif %}"
+  

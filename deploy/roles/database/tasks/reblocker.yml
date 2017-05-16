@@ -1,0 +1,57 @@
+---
+
+################################################################################
+#
+# Copyright 2013 Crown copyright (c)
+# Land Information New Zealand and the New Zealand Government.
+# All rights reserved
+#
+# This program is released under the terms of the new BSD license. See the
+# LICENSE file for more information.
+#
+################################################################################
+
+### Setup database environment
+- name: Drop Reblock database
+  command: psql -c 'DROP DATABASE IF EXISTS reblock'
+  become: yes
+  become_user: postgres
+
+- name: Init Reblock database
+  #command: "psql -c 'CREATE DATABASE reblock' template1"
+  #command: psql -tc "SELECT 1 FROM pg_database WHERE datname = 'reblock'" | grep -q 1 || psql -c "CREATE DATABASE reblock"
+  command: psql -c 'CREATE DATABASE reblock'
+  become: yes
+  become_user: postgres
+  
+- name: Drop Reblock user
+  command: psql -c 'DROP ROLE IF EXISTS reblock_user'
+  become: yes
+  become_user: postgres
+
+- name: Init Reblock user
+  command: psql -c 'CREATE ROLE reblock_user LOGIN SUPERUSER INHERIT CREATEDB'
+  become: yes
+  become_user: postgres
+ 
+- name: Assign Reblock ownership
+  command: psql -c 'ALTER DATABASE reblock OWNER TO reblock_user'
+  become: yes
+  become_user: postgres
+
+
+### Install reblocker functions
+- name: Copy Reblocker SQL as template
+  template:  
+    src: "../../../../sql/nbrfnc.sql"
+    dest: "{{ temp_sql_dir }}/nbrfnc.sql"
+
+- name: Execute Reblocker SQL
+  command: psql -f {{ temp_sql_dir }}/nbrfnc.sql reblock
+  become: yes
+  become_user: postgres
+  
+- name: Cleanup SQL script
+  file: 
+    path: "{{ temp_sql_dir }}/nbrfnc.sql"
+    state: absent

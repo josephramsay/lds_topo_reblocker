@@ -1,0 +1,10 @@
+### LINZ PROXY CONFIGURATION
+# NB be sure to terminate this tempate with a blank line, https://sourceforge.net/p/cntlm/bugs/59/
+
+Username        {{ linz_cntlm_username }}
+Domain          AD
+PassNTLMv2      {{ linz_cntlm_password }}
+Proxy           {{ linz_cntlm_parentproxy }}
+NoProxy         localhost, 127.0.0.*, 144.66.*, 10.80.*, 192.168.*
+Listen          3128
+

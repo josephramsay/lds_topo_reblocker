@@ -85,8 +85,9 @@ DECLARE
 	boundary text := 'cropregions';
 	atab text := 'rbl_associations';
 	rtab text := 'rbl_report';
-	join_func_poly text := 'st_union';
-	join_func_line text := 'st_linemerge(st_union';
+	-- st_collect vs st_union; st_union performs consistency checks but slower and fails on loops
+	join_func_poly text := 'st_collect';
+	join_func_line text := 'st_linemerge(st_collect';
 	qs text := '';
 	usepkey text;
 	
@@ -375,6 +376,13 @@ else
 	roundval = 2;
 end if;
 
+-- DOC 
+-- 1. divide features between NI and SI (bound)
+-- 2. round edge points so they match boundry lines (exvals)
+-- 3. determine whether edge points touch mapsheet boundaries (msfilter)
+-- 4. filter only touching points (srcpoly)
+-- 5. cross match all layer features to see if they touch (linked) NB ordering
+-- 6. output 1-to-1 list of joins to perform. This is the "reblocklist"
 
 --select reblocksplitter('native_poly','st_union')
 execute 'drop table if exists '||rbl as res;
@@ -444,6 +452,7 @@ DECLARE
 qstr text;
 res TEXT;
 BEGIN
+
 execute 'drop table if exists '||arbl as res;
 qstr = 'create temporary table '||arbl||' as'
 || ' with recursive innerrbl as ('
@@ -509,7 +518,7 @@ LANGUAGE plpgsql VOLATILE;
 -- ---------------------------------------------------------------------------
 -- UFID ASSIGNMENT
 
-CREATE OR REPLACE FUNCTION ufid_generator(flist int[],ctab text, final boolean) RETURNS int AS
+CREATE OR REPLACE FUNCTION ufid_generator(flist int[],ctab text, bfinal boolean) RETURNS int AS
 $BODY$
 declare
 q1 text;
@@ -535,7 +544,7 @@ q1 = 'with latest as ('
 raise notice '::: checking for existing ufid for flist %',quote_literal(flist);
 execute q1 into res;
 if res is NULL then
-	execute 'select ufid_sequence('''||ctab||''','||final||')' into res;
+	execute 'select ufid_sequence('''||ctab||''','||bfinal||')' into res;
 	--res = ufid_sequence();
 end if;
 raise notice '::: returning %',res;
@@ -548,7 +557,7 @@ LANGUAGE plpgsql VOLATILE;
 -- -----------------------------------------------------------------------------------------------------------------------
 
 
-CREATE OR REPLACE FUNCTION ufid_sequence(layername text,final boolean) RETURNS int AS
+CREATE OR REPLACE FUNCTION ufid_sequence(layername text,bfinal boolean) RETURNS int AS
 $BODY$
 declare
 res int;
@@ -566,7 +575,7 @@ BEGIN
 --if layername like '%contour%' then
 --	seqname := 'contour_ufid_seq';
 --end if;
-if final then
+if bfinal then
 	seqname = fseq;
 	seqstart = fseq_start;
 else
@@ -669,7 +678,7 @@ LANGUAGE plpgsql VOLATILE;
 
 -- ---------------------------------------------------------------------------
 
-CREATE OR REPLACE FUNCTION rbl_disassociate_ufid_components(interim text, final text,pkey text) RETURNS text AS
+CREATE OR REPLACE FUNCTION rbl_disassociate_ufid_components(interim text, tfinal text,pkey text) RETURNS text AS
 -- Removes the ufid_components field from the active table to the associations table
 $BODY$
 DECLARE
@@ -690,10 +699,10 @@ qafi = 'select rbl_assign_final_ufid('''||interim||''', '''||pkey||''')';
 
 cols = columntext(interim,'',',',array['ufid_components'],'');
 --strip ufid_comps from interim
-qitf = 'insert into '||atab||' select date_trunc(''minute'',current_timestamp),'||quote_literal(final)||', '||pkey||', ufid_components from '||interim||' where array_length(ufid_components,1)>1';
-qdtf = 'drop table if exists '||final;
+qitf = 'insert into '||atab||' select date_trunc(''minute'',current_timestamp),'||quote_literal(tfinal)||', '||pkey||', ufid_components from '||interim||' where array_length(ufid_components,1)>1';
+qdtf = 'drop table if exists '||tfinal;
 --copy interim to final
-qctf = 'create table '||final||' as select '||cols||' from '||interim;
+qctf = 'create table '||tfinal||' as select '||cols||' from '||interim;
 qdti = 'drop table '||interim;
 raise notice '::: itf=%, dtf=%, ctf=%, afi=%, dti=%',qitf,qdtf,qctf,qafi,qdti;
 
@@ -715,7 +724,7 @@ LANGUAGE plpgsql VOLATILE;
 -- original = orig table name
 -- src_table = source table being queries, eg. original_vector_layer
 -- pkey = primary-key/ufid name
--- op = operation : {st_union,st_memunion}
+-- op = operation : {st_collect,st_union,st_memunion}
 -- touch = indicator for line/poly table type for setting ST_Relate intersection parameter : {FF2F11212,FF1F00102} and whether ST_SnapToGrid is used
 -- bndry = table to crop against, ie cropregions
 -- region = crop region selector : {northisland, southisland}

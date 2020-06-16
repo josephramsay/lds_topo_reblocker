@@ -89,7 +89,9 @@ def setOverwrite(o=True):
     global OVERWRITE
     OVERWRITE = o
     global OGR_COPY_PREFS
+    old = OGR_COPY_PREFS[0]
     OGR_COPY_PREFS[0] = 'OVERWRITE={}'.format('YES' if o else 'NO')
+    return old=='OVERWRITE=YES'
     
 class LayerReader(object):
     _src = None
@@ -399,26 +401,28 @@ class PGDS(_DS):
     def write_slow(self,layerlist):
         '''HACK to retain SRS 
         https://gis.stackexchange.com/questions/126705/how-to-set-the-spatial-reference-to-a-ogr-layer-using-the-python-api'''
-        for dsn in layerlist:
-            #print 'PG create layer {}'.format(dsn[1])
-            dstsrs = ogr.osr.SpatialReference()
-            dstsrs.ImportFromEPSG(dsn[2])
-            setOverwrite()
-            dstlayer = list(self.dsl.values())[0].CreateLayer(dsn[1],dstsrs,layerlist[dsn].GetLayerDefn().GetGeomType(),self._getprefs())
-            
-            # adding fields to new layer
-            layerdef = ogr.Feature(layerlist[dsn].GetLayerDefn())
-            for i in range(layerdef.GetFieldCount()):
-                dstlayer.CreateField(layerdef.GetFieldDefnRef(i))
-            
-            # adding the features from input to dest
-            for i in range(0, layerlist[dsn].GetFeatureCount()):
-                feature = layerlist[dsn].GetFeature(i)
-                try:
-                    dstlayer.CreateFeature(feature)
-                except ValueError as ve:
-                    print ('Error Creating Feature on Layer {}. {}'.format(dsn[1],ve))
-                    
+        try:
+            old_ow = setOverwrite()
+            for dsn in layerlist:
+                #print 'PG create layer {}'.format(dsn[1])
+                dstsrs = ogr.osr.SpatialReference()
+                dstsrs.ImportFromEPSG(dsn[2])
+                dstlayer = list(self.dsl.values())[0].CreateLayer(dsn[1],dstsrs,layerlist[dsn].GetLayerDefn().GetGeomType(),self._getprefs())
+                
+                # adding fields to new layer
+                layerdef = ogr.Feature(layerlist[dsn].GetLayerDefn())
+                for i in range(layerdef.GetFieldCount()):
+                    dstlayer.CreateField(layerdef.GetFieldDefnRef(i))
+                
+                # adding the features from input to dest
+                for i in range(0, layerlist[dsn].GetFeatureCount()):
+                    feature = layerlist[dsn].GetFeature(i)
+                    try:
+                        dstlayer.CreateFeature(feature)
+                    except ValueError as ve:
+                        print ('Error Creating Feature on Layer {}. {}'.format(dsn[1],ve))
+        finally:
+            setOverwrite(old_ow)        
         return layerlist
         
 class PGDS_Version(PGDS):

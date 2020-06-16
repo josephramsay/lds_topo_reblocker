@@ -37,6 +37,9 @@ import psycopg2
 import urllib
 import json
 import shutil
+from contextlib import redirect_stdout
+from io import TextIOWrapper, BytesIO
+import io
 
 
 PYVER3 = sys.version_info > (3,)
@@ -52,9 +55,9 @@ else:
 
 
 try:
-    import ogr
+    import ogr, gdal
 except ImportError:
-    from osgeo import ogr
+    from osgeo import ogr, gdal
 
 OVERWRITE = False
 ENABLE_VERSIONING = False
@@ -67,7 +70,7 @@ SHP_SUFFIXES = ('shp','shx','dbf','prj','cpg')
 OGR_COPY_PREFS = ["OVERWRITE=NO","GEOM_TYPE=geometry","ENCODING=UTF-8"]
 
 DEF_CREDS = '.pdb_credentials'
-DEF_HOST = '127.0.0.1'
+DEF_HOST = 'prdassgeo02.ad.linz.govt.nz'#127.0.0.1'
 DEF_PORT = 5432
 
 CONFIG = None
@@ -77,9 +80,12 @@ if re.search('posix',os.name):
     DEF_SHAPE_PATH = ('/home/',)
 else:
     DEF_SHAPE_PATH = ('C:\\',)
-    
-    
-def setOverwrite(o):
+
+#this doesn't seem to work, it just makes failures silent   
+#gdal.UseExceptions()
+
+def clearOverwrite():setOverwrite(False);
+def setOverwrite(o=True):
     global OVERWRITE
     OVERWRITE = o
     global OGR_COPY_PREFS
@@ -301,6 +307,9 @@ class PGDS(_DS):
         go = self._getopts()
         return PGDS.CS_TMPLT.format(go['HOST'],go['PORT'],go['DBNAME'],go['USER'],go['PASS'],)
     
+    def _getprefs(self):
+        return super(PGDS,self)._getprefs()#+["PRECISION=yes"]
+
     def _getopts(self):
         usr,pwd = CredsReader.userpass(DEF_CREDS)
         h,p = CredsReader.hostport(DEF_CREDS)
@@ -345,19 +354,46 @@ class PGDS(_DS):
      
     def write(self,layerlist):
         '''Exports whatever is provided to it in layerlist'''
-        return self.write_fast(layerlist)
-    
+        try:
+            return self.write_fast(layerlist)
+        except Exception as e:
+            print(e)
+            return self.write_slow(layerlist)
+
     def write_fast(self,layerlist):
         '''PG write writes to a single DS since a DS represents a DB connection. SRID not transferred!'''
-        self.connect()
-        for dsn in layerlist:
-            #print 'PG create layer {}'.format(dsn[1])
-            list(self.dsl.values())[0].CopyLayer(layerlist[dsn],dsn[1],self._getprefs())
-            '''HACK to set SRS'''
-            q = "select UpdateGeometrySRID('{}','wkb_geometry',{})".format(dsn[1].lower(),dsn[2])
-            res = self.execute(q)
-            #print q,res
-        self.disconnect()
+        try:
+            self.connect()
+            for dsn in layerlist:
+                #print 'PG create layer {}'.format(dsn[1])
+                writeto = list(self.dsl.values())[0]
+                sridq = "select UpdateGeometrySRID('{}','wkb_geometry',{})".format(dsn[1].lower(),dsn[2])
+                comp1 = {
+                    'n':layerlist[dsn].GetName(),
+                    'g':layerlist[dsn].GetGeomType(),
+                    's':layerlist[dsn].GetSpatialRef().GetName(),
+                    'fc':layerlist[dsn].GetFeatureCount(),
+                    'lc':writeto.GetLayerCount()
+                }
+
+                writeto.CopyLayer(layerlist[dsn],dsn[1],self._getprefs())
+                writeto.ExecuteSQL(sridq)
+
+                c2 = writeto.GetLayerCount()
+                lastlayer = writeto.GetLayer(c2-1)
+                comp2 = {
+                    'n':lastlayer.GetName(),
+                    'g':lastlayer.GetGeomType(),
+                    's':lastlayer.GetSpatialRef().GetName(),
+                    'fc':lastlayer.GetFeatureCount(),
+                    'lc':c2
+                }
+                #Because GDAL isnt returning errors to indicate whether a layer copy failed or not we have to assume failure when 
+                #the name, geometry or feature counts of the before and after layers is different
+                if any([comp1[i]!=comp2[i] for i in ['n','g','fc']]):
+                    raise Exception('CopyLayer Failed\n{}\n{}'.format(comp1,comp2))
+        finally:
+            self.disconnect()
         return layerlist
     
     def write_slow(self,layerlist):
@@ -367,7 +403,8 @@ class PGDS(_DS):
             #print 'PG create layer {}'.format(dsn[1])
             dstsrs = ogr.osr.SpatialReference()
             dstsrs.ImportFromEPSG(dsn[2])
-            dstlayer = self.dsl.values()[0].CreateLayer(dsn[1],dstsrs,layerlist[dsn].GetLayerDefn().GetGeomType(),self._getprefs())
+            setOverwrite()
+            dstlayer = list(self.dsl.values())[0].CreateLayer(dsn[1],dstsrs,layerlist[dsn].GetLayerDefn().GetGeomType(),self._getprefs())
             
             # adding fields to new layer
             layerdef = ogr.Feature(layerlist[dsn].GetLayerDefn())

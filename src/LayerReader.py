@@ -37,7 +37,6 @@ import psycopg2
 import urllib
 import json
 import shutil
-from contextlib import redirect_stdout
 from io import TextIOWrapper, BytesIO
 import io
 
@@ -392,7 +391,9 @@ class PGDS(_DS):
                 }
                 #Because GDAL isnt returning errors to indicate whether a layer copy failed or not we have to assume failure when 
                 #the name, geometry or feature counts of the before and after layers is different
-                if any([comp1[i]!=comp2[i] for i in ['n','g','fc']]):
+
+                #if any of these are different                           and if any of these are the same (lc2>lc1)
+                if any([comp1[i]!=comp2[i] for i in ['n','g','fc']]) and any([comp1[i]==comp2[i] for i in ['lc']]):
                     raise Exception('CopyLayer Failed\n{}\n{}'.format(comp1,comp2))
         finally:
             self.disconnect()

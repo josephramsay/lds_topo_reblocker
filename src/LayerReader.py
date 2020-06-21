@@ -37,8 +37,7 @@ import psycopg2
 import urllib
 import json
 import shutil
-from io import TextIOWrapper, BytesIO
-import io
+from abc import ABC, abstractmethod
 
 
 PYVER3 = sys.version_info > (3,)
@@ -50,8 +49,6 @@ if PYVER3:
 else:
     import urllib2 as u_lib
     from urllib2 import HTTPError
-    pass
-
 
 try:
     import ogr, gdal
@@ -83,7 +80,7 @@ else:
 #this doesn't seem to work, it just makes failures silent   
 #gdal.UseExceptions()
 
-def clearOverwrite():setOverwrite(False);
+def clearOverwrite(): setOverwrite(False)
 def setOverwrite(o=True):
     global OVERWRITE
     OVERWRITE = o
@@ -162,12 +159,13 @@ class LayerReader(object):
 
 class DatasourceException(Exception): pass
 
-class _DS(object):
+class _DS(ABC):
     FN_SPLIT = '###'
     CREATE = True
     uri = None
     dsl = {}
     driver = None
+    DRIVER_NAME = None
     
     def __init__(self):
         self.driver = ogr.GetDriverByName(self.DRIVER_NAME)
@@ -201,8 +199,6 @@ class _DS(object):
         uu='http://prj2epsg.org/search.json?mode=wkt&terms='
 
         purl='127.0.0.1:3128'
-        puser=None
-        ppass=None
         pscheme="http"
         
         uuwkt = uu + u_lib.quote(wkt)
@@ -247,6 +243,21 @@ class _DS(object):
             #ogr.UseExceptions()
         #print ('DS',ds)
         return ds
+
+    @abstractmethod
+    def connect(self): pass
+    
+    @abstractmethod
+    def disconnect(self): pass
+    
+    @abstractmethod
+    def execute(self,qstr,results=True): pass
+
+    @abstractmethod
+    def read(self,filt): pass
+
+    @abstractmethod
+    def write(self): pass
     
     def create(self,dsn):
         ds = None
@@ -254,18 +265,14 @@ class _DS(object):
             ds = self.driver.CreateDataSource(dsn, self._getprefs())
             if ds is None:
                 raise DatasourceException("Error opening/creating DS "+str(dsn))
-        except DatasourceException as ds1:
+        except DatasourceException:
             raise
-        except RuntimeError as re2:
+        except RuntimeError:
             '''this is only caught if ogr.UseExceptions() is enabled (which we dont enable since RunErrs thrown even when DS completes)'''
             raise
         return ds
-    
-    def read(self,filt):
-        pass
-    
-    def wite(self):
-        pass
+
+
     
 class PGDS(_DS):
     INIT_VAL = 1
@@ -351,7 +358,7 @@ class PGDS(_DS):
     def _tname(self,name):
         '''Debugging shortcut to add list of tables for export'''
         return True
-        return name.find('new_contour')==0
+        #return name.find('new_contour')==0
      
     def write(self,layerlist):
         '''Exports whatever is provided to it in layerlist'''
@@ -493,6 +500,15 @@ class SFDS(_DS):
                 shplist[shpname] = SFDS(shpname).dsl[shpname]
         return shplist
         
+    def connect(self):
+        pass
+
+    def disconnect(self):
+        pass
+    
+    def execute(self,qstr):
+        pass
+
     def read(self,filt):
         layerlist = {}
         for dsn in self.dsl:
@@ -592,14 +608,14 @@ class CredsReader(object):
                 for line in h.readlines():
                     k = re.search('^{key}=(.*)$'.format(key=skey),line)
                     if k: return k.group(1)
-        except FileNotFoundError as fnfe:
+        except FileNotFoundError:
             return CredsReader._walk(sfile,skey,default,'..')
         return default
 
     @classmethod
     def _walk(cls,sfile,skey,default,dir):
         '''Simple directory walker looking for named file in all sub dirs'''
-        for p,d,f in os.walk(dir):
+        for p,_,f in os.walk(dir):
             if sfile in f: 
                 return CredsReader.searchfile(os.path.join(p,sfile), skey, default)
         raise FileNotFoundError('File not found during directory walk of {}'.format(dir))
@@ -626,11 +642,8 @@ def main():
     actionflag = 7
     selectflag = False
     
-    inlayers = []
-    outlayers = []
-    
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "hcieposd:l:u:m:wvnxyrz", ["help","cropregion","import","export","process","overwrite","selection","dir=","layer=","ufid=","merge=","webservice","version","nolaunder","excise","deepexcise","release","linkrelease"])
+        opts, _ = getopt.getopt(sys.argv[1:], "hcieposd:l:u:m:wvnxyrz", ["help","cropregion","import","export","process","overwrite","selection","dir=","layer=","ufid=","merge=","webservice","version","nolaunder","excise","deepexcise","release","linkrelease"])
     except getopt.error as msg:
         usage(msg)
         sys.exit(2)
@@ -757,7 +770,7 @@ def convertImpl(spath,layer,ufidname,actionflag,selectflag,loadcropregions):
             with PXDS() as pxds:
                 lr = LayerReader(pxds,sfds)
                 inlayers = inlayers if inlayers else [i[i.rfind('/')+1:i.rfind('.')] for i in lr.dst.dsl]
-                outlayers = [k[1] for k in lr.transfer(inlayers if selectflag else layer)]
+                [k[1] for k in lr.transfer(inlayers if selectflag else layer)]
         #lr = LayerReader(initds(PXDS),initds(SFDS,spath))
         #inlayers = inlayers if inlayers else [i[i.rfind('/')+1:i.rfind('.')] for i in lr.dst.dsl]
         #outlayers = [k[1] for k in lr.transfer(inlayers if selectflag else layer)]

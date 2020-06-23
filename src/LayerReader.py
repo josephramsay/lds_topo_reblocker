@@ -59,9 +59,10 @@ abstractmethod = abc.abstractmethod
 #    from urllib2 import HTTPError
 
 try:
-    import ogr, gdal
-except ImportError:
-    from osgeo import ogr, gdal
+    import ogr, osr, gdal
+except ImportError as iee:
+    print(iee)
+    from osgeo import ogr, osr, gdal
 
 OVERWRITE = False
 ENABLE_VERSIONING = False
@@ -421,7 +422,7 @@ class PGDS(_DS):
             old_ow = setOverwrite()
             for dsn in layerlist:
                 #print 'PG create layer {}'.format(dsn[1])
-                dstsrs = ogr.osr.SpatialReference()
+                dstsrs = osr.SpatialReference()
                 dstsrs.ImportFromEPSG(dsn[2])
                 dstlayer = list(self.dsl.values())[0].CreateLayer(dsn[1],dstsrs,layerlist[dsn].GetLayerDefn().GetGeomType(),self._getprefs())
                 

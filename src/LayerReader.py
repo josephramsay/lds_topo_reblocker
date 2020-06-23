@@ -400,7 +400,7 @@ class PGDS(_DS):
                 #the name, geometry or feature counts of the before and after layers is different
 
                 #if any of these are different                           and if any of these are the same (lc2>lc1)
-                if any([comp1[i]!=comp2[i] for i in ['n','g','fc']]) and any([comp1[i]==comp2[i] for i in ['lc']]):
+                if any([comp1[i]!=comp2[i] for i in ['n','g','fc']]) or any([comp1[i]==comp2[i] for i in ['lc']]):
                     raise Exception('CopyLayer Failed\n{}\n{}'.format(comp1,comp2))
         finally:
             self.disconnect()

@@ -37,18 +37,26 @@ import psycopg2
 import urllib
 import json
 import shutil
-from abc import ABC, abstractmethod
+from six.moves import urllib as u_lib
+from six.moves.urllib.error import HTTPError
+
+#Python 3
+#from abc import ABC,abstractmethod
+
+#Compatible with Python 2 *and* 3:
+import abc
+ABC = abc.ABCMeta('ABC', (object,), {'__slots__': ()})
+abstractmethod = abc.abstractmethod
 
 
-PYVER3 = sys.version_info > (3,)
-
+#PYVER3 = sys.version_info > (3,)
 #2 to 3 imports
-if PYVER3:
-    import urllib.request as u_lib
-    from urllib.error import HTTPError
-else:
-    import urllib2 as u_lib
-    from urllib2 import HTTPError
+#if PYVER3:
+#    import urllib.request as u_lib
+#    from urllib.error import HTTPError
+#else:
+#    import urllib2 as u_lib
+#    from urllib2 import HTTPError
 
 try:
     import ogr, gdal

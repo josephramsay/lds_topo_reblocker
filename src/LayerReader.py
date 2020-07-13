@@ -37,6 +37,8 @@ import psycopg2
 import urllib
 import json
 import shutil
+import warnings
+from six import StringIO
 from six.moves import urllib as u_lib
 from six.moves.urllib.error import HTTPError
 
@@ -47,7 +49,6 @@ from six.moves.urllib.error import HTTPError
 import abc
 ABC = abc.ABCMeta('ABC', (object,), {'__slots__': ()})
 abstractmethod = abc.abstractmethod
-
 
 #PYVER3 = sys.version_info > (3,)
 #2 to 3 imports
@@ -72,7 +73,7 @@ DST_SCHEMA = 'public'
 DST_TABLE_PREFIX = 'new_'
 DST_SUBDIR = '_new'
 SHP_SUFFIXES = ('shp','shx','dbf','prj','cpg')
-OGR_COPY_PREFS = ["OVERWRITE=NO","GEOM_TYPE=geometry","ENCODING=UTF-8"]
+OGR_COPY_PREFS = ["OVERWRITE=NO","GEOM_TYPE=geometry"]#,"ENCODING=UTF-8"]
 
 DEF_CREDS = '.pdb_credentials'
 DEF_HOST = 'prdassgeo02.ad.linz.govt.nz'#127.0.0.1'
@@ -86,8 +87,64 @@ if re.search('posix',os.name):
 else:
     DEF_SHAPE_PATH = ('C:\\',)
 
-#this doesn't seem to work, it just makes failures silent   
+#this doesn't seem to work, it just makes failures silent
 #gdal.UseExceptions()
+GEH_MARKER = 'GDALERROR'
+
+class GdalException(Exception): pass
+class GdalStdoutCaptureException(GdalException): pass
+class GdalStderrCaptureException(GdalStdoutCaptureException): pass
+
+class GdalErrorHandler(object):
+    def __init__(self,err_level=gdal.CE_None):
+        self.handler(err_level,0,'')
+
+    def handler(self, err_level, err_no, err_msg):
+        self.err_level = err_level
+        self.err_no = err_no
+        self.err_msg = GEH_MARKER+' Error Handler '+err_msg
+        if err_level>0:
+            #The exception here won't be caught since this runs in a separate thread 
+            #but the stdout print will if we redirect and capture
+            print(self.err_msg)
+            raise GdalException(self.err_msg)
+
+def clearGdalExceptions(): gdal.DontUseExceptions()
+def setGdalException(e=True):
+    old = gdal.GetUseExceptions()
+    if e: 
+        geh = GdalErrorHandler()
+        handler = geh.handler #https://trac.osgeo.org/gdal/ticket/5186
+        gdal.PushErrorHandler(handler)
+        gdal.UseExceptions()
+    else: 
+        gdal.DontUseExceptions()
+        gdal.PopErrorHandler()
+    return old==1
+
+def captureGdalError(func):
+    def wrapCaptureAndCall(*args, **kwargs):
+        stderr_fileno,stdout_fileno = sys.stderr,sys.stdout
+        sys.stderr = StringIO()
+        sys.stdout = StringIO()
+        try:
+            rv = func(*args, **kwargs)
+            err = sys.stderr.getvalue()
+            out = sys.stdout.getvalue()
+            #if something is in stderr raise
+            if err: 
+                raise GdalStderrCaptureException('ERROR '+err)
+            #if something is in stdout check that is been marked as an error then raise
+            if out and out.startswith(GEH_MARKER): 
+                raise GdalStdoutCaptureException('OUTPUT '+out)
+        except RuntimeError as rune:
+            raise GdalStderrCaptureException('Caught GDAL runtime error'+rune)
+        finally:
+            sys.stderr.close()
+            sys.stdout.close()
+            sys.stderr,sys.stdout = stderr_fileno,stdout_fileno
+        return rv
+    return wrapCaptureAndCall
 
 def clearOverwrite(): setOverwrite(False)
 def setOverwrite(o=True):
@@ -97,31 +154,33 @@ def setOverwrite(o=True):
     old = OGR_COPY_PREFS[0]
     OGR_COPY_PREFS[0] = 'OVERWRITE={}'.format('YES' if o else 'NO')
     return old=='OVERWRITE=YES'
-    
+
+class LayerCompareException(Exception):pass
+
 class LayerReader(object):
     _src = None
     _dst = None
-        
+
     def __init__(self,s,d):
         self.dst = d #PGDS()
         self.src = s #SFDS()
-    
+
     @property
     def dst(self):
-        return self._dst   
-     
-    @dst.setter    
+        return self._dst
+
+    @dst.setter
     def dst(self,val):
-        self._dst = val    
-        
+        self._dst = val
+
     @property
     def src(self):
-        return self._src   
-     
-    @src.setter    
+        return self._src
+
+    @src.setter
     def src(self,val):
         self._src = val
-        
+
     def transfer(self,filt=None):
         '''loop through list of shapefile paths, since can provide # different paths to check'''
         return self.dst.write(self.src.read(filt))
@@ -130,14 +189,14 @@ class LayerReader(object):
 #         for spath in DEF_SHAPE_PATH:
 #             for sfile in self.readdir(spath):#['shingle_poly.shp','building_poly.shp','airport_poly.shp']:
 #                 self.load(os.path.join(spath,sfile))
-                    
+
     def purge(self,layer,pkey):
         '''Removes non majority features from layer. If #1 LINE and #10 POLYs in layer, remove the LINE'''
         for f in self.geomatch(layer):
             layer.DeleteFeature(f.GetFID())
             print ('DELETE FID {} (ufid={}) from Layer {}'.format(f.GetFID(),f.GetFieldAsInteger(pkey),layer.GetLayerDefn().GetName()))
         return layer
-        
+
     def geomatch(self,layer):
         '''Loop features in layer and put geometry type (POLY/LINE etc) in fg array and return types list if not unique'''
         featgroups = {}
@@ -281,8 +340,44 @@ class _DS(ABC):
             raise
         return ds
 
+    def layerCompare(self,layer1,layer2,count1=0,count2=0):
+        comp1 = {
+            'n':layer1.GetName(),
+            'g':layer1.GetGeomType(),
+            's':layer1.GetSpatialRef().GetName(),
+            'fc':layer1.GetFeatureCount(),
+            'lc':count1
+                }
+        comp2 = {
+            'n':layer2.GetName(),
+            'g':layer2.GetGeomType(),
+            's':layer2.GetSpatialRef().GetName(),
+            'fc':layer2.GetFeatureCount(),
+            'lc':count2
+                }
+        #Because GDAL isnt returning errors to indicate whether a layer copy failed or not we have to assume failure when 
+        #the name, geometry or feature counts of the before and after layers is different
 
-    
+        #if any of these are different                           and if any of these are the same (lc2>lc1)
+        #LOGIC
+        #if the layer counts are different a new layer has been created and we check if pg(new) matches shp
+        #if the layer counts are the same the create part of the copy failed. Did the rows get copied?
+        if comp1['lc']==comp2['lc']:
+            if any([comp1[i]!=comp2[i] for i in ['n','g','fc']]):
+                raise LayerCompareException('Layer Comparison Exception',comp1,comp2)
+        elif comp1['lc']<comp2['lc']:
+            #have a new layer. Did the rows copy
+            if any([comp1[i]!=comp2[i] for i in ['n','g','fc']]):
+                raise LayerCompareException('Layer Comparison Exception. CreateLayer Succeeded, CopyLayer Failed',comp1,comp2)
+
+
+    def featureCompare(self,layer1,layer2):
+        '''Check for macrons persisting across copy operations'''
+        for f1 in layer1.GetFeatures():
+            for f2 in layer2.GetFeatures():
+                pass
+
+
 class PGDS(_DS):
     INIT_VAL = 1
     DRIVER_NAME = 'PostgreSQL'
@@ -370,77 +465,94 @@ class PGDS(_DS):
         #return name.find('new_contour')==0
      
     def write(self,layerlist):
-        '''Exports whatever is provided to it in layerlist'''
+        '''Attempts to write/copy contents of layerlist using copylayer|per-feat methods'''
         try:
-            return self.write_fast(layerlist)
+            old_ow = setOverwrite()
+            succ1,fail1 = self.write_fast(layerlist)
+            if fail1: 
+                succ2,fail2 = self.write_slow(fail1)
+                if fail2:
+                    if len(fail1) == len(fail2)== len(layerlist):
+                        raise LayerCompareException('No layers written')
+                    else: return succ1+succ2   
         except Exception as e:
             print(e)
-            return self.write_slow(layerlist)
+            raise
+        finally:
+            setOverwrite(old_ow)
+        return layerlist
+
 
     def write_fast(self,layerlist):
         '''PG write writes to a single DS since a DS represents a DB connection. SRID not transferred!'''
+        successes,failures = [],[]
         try:
             self.connect()
             for dsn in layerlist:
-                #print 'PG create layer {}'.format(dsn[1])
-                writeto = list(self.dsl.values())[0]
-                sridq = "select UpdateGeometrySRID('{}','wkb_geometry',{})".format(dsn[1].lower(),dsn[2])
-                comp1 = {
-                    'n':layerlist[dsn].GetName(),
-                    'g':layerlist[dsn].GetGeomType(),
-                    's':layerlist[dsn].GetSpatialRef().GetName(),
-                    'fc':layerlist[dsn].GetFeatureCount(),
-                    'lc':writeto.GetLayerCount()
-                }
+                try:
+                    #print 'PG create layer {}'.format(dsn[1])
+                    writeto = list(self.dsl.values())[0]
+                    c1 = writeto.GetLayerCount()
+                    sridq = "select UpdateGeometrySRID('{}','wkb_geometry',{})".format(dsn[1].lower(),dsn[2])
 
-                writeto.CopyLayer(layerlist[dsn],dsn[1],self._getprefs())
-                writeto.ExecuteSQL(sridq)
+                    writeto.CopyLayer(layerlist[dsn],dsn[1],self._getprefs())
+                    writeto.ExecuteSQL(sridq)
 
-                c2 = writeto.GetLayerCount()
-                lastlayer = writeto.GetLayer(c2-1)
-                comp2 = {
-                    'n':lastlayer.GetName(),
-                    'g':lastlayer.GetGeomType(),
-                    's':lastlayer.GetSpatialRef().GetName(),
-                    'fc':lastlayer.GetFeatureCount(),
-                    'lc':c2
-                }
-                #Because GDAL isnt returning errors to indicate whether a layer copy failed or not we have to assume failure when 
-                #the name, geometry or feature counts of the before and after layers is different
+                    c2 = writeto.GetLayerCount()
+                    lastlayer = writeto.GetLayer(c2-1)
 
-                #if any of these are different                           and if any of these are the same (lc2>lc1)
-                if any([comp1[i]!=comp2[i] for i in ['n','g','fc']]) or any([comp1[i]==comp2[i] for i in ['lc']]):
-                    raise Exception('CopyLayer Failed\n{}\n{}'.format(comp1,comp2))
+                    self.layerCompare(layerlist[dsn],lastlayer,c1,c2)
+                    successes.append({dsn:layerlist[dsn]})
+                except LayerCompareException as lce:
+                    '''This indicates that copylayer failed and we should revert to the feature/feature copy method'''
+                    print(lce)
+                    failures(dsn] = layerlist[dsn]
+                except Exception:
+                    raise
         finally:
             self.disconnect()
-        return layerlist
+        return successes,failures
     
     def write_slow(self,layerlist):
         '''HACK to retain SRS 
         https://gis.stackexchange.com/questions/126705/how-to-set-the-spatial-reference-to-a-ogr-layer-using-the-python-api'''
-        try:
-            old_ow = setOverwrite()
-            for dsn in layerlist:
+        successes,failures = [],[]
+        for dsn in layerlist:
+            try:
+                (datasource,layername,geomtype,preferences) = list(self.dsl.values())[0],dsn[1],layerlist[dsn].GetLayerDefn().GetGeomType(),self._getprefs()
                 #print 'PG create layer {}'.format(dsn[1])
                 dstsrs = osr.SpatialReference()
                 dstsrs.ImportFromEPSG(dsn[2])
-                dstlayer = list(self.dsl.values())[0].CreateLayer(dsn[1],dstsrs,layerlist[dsn].GetLayerDefn().GetGeomType(),self._getprefs())
-                
+                c1 = datasource.GetLayerCount()
+
+                try:
+                    dstlayer = datasource.CreateLayer(layername,dstsrs,geomtype,preferences)
+                    #dstlayer = list(self.dsl.values())[0].CreateLayer(dsn[1],dstsrs,layerlist[dsn].GetLayerDefn().GetGeomType(),self._getprefs())
+                except ValueError as ve:
+                    print ('Error Creating Layer on Datasource {}. {}'.format(dsn[1],ve))
+
                 # adding fields to new layer
                 layerdef = ogr.Feature(layerlist[dsn].GetLayerDefn())
                 for i in range(layerdef.GetFieldCount()):
                     dstlayer.CreateField(layerdef.GetFieldDefnRef(i))
                 
                 # adding the features from input to dest
-                for i in range(0, layerlist[dsn].GetFeatureCount()):
+                c1 = layerlist[dsn].GetFeatureCount()
+                for i in range(0, c1):
                     feature = layerlist[dsn].GetFeature(i)
                     try:
                         dstlayer.CreateFeature(feature)
                     except ValueError as ve:
                         print ('Error Creating Feature on Layer {}. {}'.format(dsn[1],ve))
-        finally:
-            setOverwrite(old_ow)        
-        return layerlist
+                        
+                self.layerCompare(layerlist[dsn],dstlayer,c1,datasource.GetLayerCount())
+                successes[dsn] = layerlist[dsn]
+            except LayerCompareException as lce:
+                print(lce)
+                failures[dsn] = layerlist[dsn]
+            except Exception:
+                raise
+        return successes,failures
         
 class PGDS_Version(PGDS):
     '''table versioning for PG'''
@@ -519,6 +631,7 @@ class SFDS(_DS):
         pass
 
     def read(self,filt):
+        '''Shapefile reader'''
         layerlist = {}
         for dsn in self.dsl:
             for index in range(self.dsl[dsn].GetLayerCount()):
@@ -530,26 +643,72 @@ class SFDS(_DS):
                     srid = self._findSRID(name,layer.GetSpatialRef(),USE_EPSG_WEBSERVICE)
                     layerlist[(dsn,name,srid)] = layer
         return layerlist
-    
+
     def write(self,layerlist,cropcolumn=None):
+        '''Attempt to two different write/copy methods'''
+        try:
+            succ1,fail1 = self.write_fast(layerlist,cropcolumn)
+            if fail1: 
+                succ2,fail2 = self.write_alt(fail1,cropcolumn)
+                if fail2:
+                    if len(fail1) == len(fail2)== len(layerlist):
+                        raise LayerCompareException('No layers written')
+                    else: return succ1+succ2
+        except Exception as e:
+            print(e)
+            raise
+        return layerlist
+
+    def write_fast(self,layerlist,cropcolumn):
         '''TODO. Write new shp per layer overwriting existing'''
+        #set gdal exceptions to catch unicode errors
+        old = setGdalException()
+        successes,failures = [],[]
         for dsn in layerlist:
             srcname = re.sub('^'+DST_TABLE_PREFIX,'',dsn[1])
             srcpath = os.path.abspath(self.shppath[0]+DST_SUBDIR)
             srcfile = os.path.abspath(os.path.join(srcpath,srcname+'.shp'))
             if not os.path.exists(srcpath): os.mkdir(srcpath)
-            if os.path.exists(srcfile): self.driver.DeleteDataSource(srcfile)
-            dstds = self.driver.CreateDataSource(srcfile)
-            cpy = dstds.CopyLayer(layerlist[dsn],srcname,self._getprefs())
-            #this section hacked in to add delete column functionality
-            if cropcolumn:
-                col = cpy.GetLayerDefn().GetFieldIndex(cropcolumn)
-                cpy.DeleteField(col)
-            dstds.Destroy()
-        return layerlist
-    
-    def _write(self,layerlist):
-        '''Alternative shape writer'''
+            try:
+                if os.path.exists(srcfile): self.driver.DeleteDataSource(srcfile)
+                dstds = self.driver.CreateDataSource(srcfile)
+                c1 = dstds.GetLayerCount()
+                cpy = self._copyWrapper(dstds,layerlist,dsn,srcname)
+                #this section hacked in to add delete column functionality
+                if cropcolumn:
+                    col = cpy.GetLayerDefn().GetFieldIndex(cropcolumn)
+                    cpy.DeleteField(col)
+                self.layerCompare(layerlist[dsn],cpy,c1,dstds.GetLayerCount())
+                successes.append({dsn:layerlist[dsn]})
+            except Warning as w:
+                #this is supposed to catch gdal warnings...
+                print (w)
+            except RuntimeError as rune:
+                #this is supposed to catch gdal errors with GdalExceptions turned on...
+                print (rune)
+            except GdalStdoutCaptureException as goc:
+                print(goc)
+                failures(dsn] = layerlist[dsn]
+            except LayerCompareException as lce:
+                '''This indicates that copylayer failed and we should revert to the feature/feature copy method'''
+                print(lce)
+                failures[dsn] = layerlist[dsn]
+            except Exception:
+                raise
+            finally:
+                #now set gdal exceptions back to what they were previously
+                setGdalException(old)
+                dstds.Destroy
+        return successes,failures
+
+    @captureGdalError
+    def _copyWrapper(self,dstds,layerlist,dsn,srcname):
+        return dstds.CopyLayer(layerlist[dsn],srcname,self._getprefs())
+
+
+    def write_alt(self,layerlist,cropcolumn):
+        '''Alternative shape writer, still uses copylayer'''
+        successes,failures = [],[]
         for dsn in layerlist:
             #dsn = ("PG:dbname='reblock' host='127.0.0.1' port='5432' active_schema=public", 'new_native_poly')
             #srcname = dsn[1].split('.')[-1]
@@ -558,19 +717,28 @@ class SFDS(_DS):
             srcfile = os.path.abspath(self.shppath[0]+DST_SUBDIR)#,srcname+'.shp'))
             if not os.path.exists(srcfile): os.mkdir(srcfile)
             #srcsrs = layerlist[dsn].GetSpatialRef()
-            if OVERWRITE:
-                try:
-                    self.driver.DeleteDataSource(srcfile)
-                except:
-                    for suf in SHP_SUFFIXES:
-                        f = '{0}/{1}.{2}'.format(srcfile,srcname,suf)
-                        if os.path.isfile(f): 
-                            try: os.remove(f)
-                            except : shutil.rmtree(f, ignore_errors=True)
-            dstds = self.driver.CreateDataSource(srcfile)
-            dstds.CopyLayer(layerlist[dsn],srcname,self._getprefs())
-            
-        return layerlist
+            try:
+                if OVERWRITE:
+                    try:
+                        self.driver.DeleteDataSource(srcfile)
+                    except:
+                        for suf in SHP_SUFFIXES:
+                            f = '{0}/{1}.{2}'.format(srcfile,srcname,suf)
+                            if os.path.isfile(f): 
+                                try: os.remove(f)
+                                except : shutil.rmtree(f, ignore_errors=True)
+                dstds = self.driver.CreateDataSource(srcfile)
+                c1 = dstds.GetLayerCount()
+                dstds.CopyLayer(layerlist[dsn],srcname,self._getprefs())
+
+                c2 = dstds.GetLayerCount()
+                lastlayer = dstds.GetLayer(c2-1)
+                self.layerCompare(layerlist[dsn],lastlayer,c1,c2)
+                successes[dsn] = layerlist[dsn]
+            except LayerCompareException as lce:
+                print(lce)
+                failures[dsn] = layerlist[dsn]
+        return successes,failures
        
 class Reporter(object):
     def __init__(self):
@@ -747,9 +915,9 @@ def convertImpl(spath,layer,ufidname,actionflag,selectflag,loadcropregions):
         PXDS = PGDS
         
     '''Initialise source and dest DS objects'''
-    if loadcropregions: 
+    if loadcropregions:
         lr = LayerReader(initds(SFDS,'CropRegions.shp'),initds(PXDS))
-        lr.transfer()        
+        lr.transfer()
              
     # UPLOAD. Transfer shapefiles up to DB and call reblocker 
     if actionflag & 1:

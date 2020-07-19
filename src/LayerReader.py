@@ -41,6 +41,7 @@ import warnings
 from six import StringIO
 from six.moves import urllib as u_lib
 from six.moves.urllib.error import HTTPError
+from pprint import pprint
 
 #Python 3
 #from abc import ABC,abstractmethod
@@ -73,7 +74,6 @@ DST_SCHEMA = 'public'
 DST_TABLE_PREFIX = 'new_'
 DST_SUBDIR = '_new'
 SHP_SUFFIXES = ('shp','shx','dbf','prj','cpg')
-OGR_COPY_PREFS = ["OVERWRITE=NO","GEOM_TYPE=geometry"]#,"ENCODING=UTF-8"]
 
 DEF_CREDS = '.pdb_credentials'
 DEF_HOST = 'prdassgeo02.ad.linz.govt.nz'#127.0.0.1'
@@ -87,6 +87,7 @@ if re.search('posix',os.name):
 else:
     DEF_SHAPE_PATH = ('C:\\',)
 
+#gdal.ConfigOptions('ENCODING=UTF-8')
 #this doesn't seem to work, it just makes failures silent
 #gdal.UseExceptions()
 GEH_MARKER = 'GDALERROR'
@@ -107,15 +108,13 @@ class GdalErrorHandler(object):
             #The exception here won't be caught since this runs in a separate thread 
             #but the stdout print will if we redirect and capture
             print(self.err_msg)
-            raise GdalException(self.err_msg)
+            #raise GdalException(self.err_msg)
 
 def clearGdalExceptions(): gdal.DontUseExceptions()
 def setGdalException(e=True):
     old = gdal.GetUseExceptions()
     if e: 
-        geh = GdalErrorHandler()
-        handler = geh.handler #https://trac.osgeo.org/gdal/ticket/5186
-        gdal.PushErrorHandler(handler)
+        gdal.PushErrorHandler(GdalErrorHandler().handler)
         gdal.UseExceptions()
     else: 
         gdal.DontUseExceptions()
@@ -139,21 +138,18 @@ def captureGdalError(func):
                 raise GdalStdoutCaptureException('OUTPUT '+out)
         except RuntimeError as rune:
             raise GdalStderrCaptureException('Caught GDAL runtime error'+rune)
+        except SystemError as syse:
+            raise GdalStderrCaptureException('Caught GDAL sys error'+syse)
         finally:
             sys.stderr.close()
             sys.stdout.close()
             sys.stderr,sys.stdout = stderr_fileno,stdout_fileno
+            if err: print('x',err,end='')
+            if out: print('o',out,end='')
         return rv
     return wrapCaptureAndCall
 
-def clearOverwrite(): setOverwrite(False)
-def setOverwrite(o=True):
-    global OVERWRITE
-    OVERWRITE = o
-    global OGR_COPY_PREFS
-    old = OGR_COPY_PREFS[0]
-    OGR_COPY_PREFS[0] = 'OVERWRITE={}'.format('YES' if o else 'NO')
-    return old=='OVERWRITE=YES'
+
 
 class LayerCompareException(Exception):pass
 
@@ -234,6 +230,9 @@ class _DS(ABC):
     dsl = {}
     driver = None
     DRIVER_NAME = None
+
+    OGR_DS_PREFS = ["OVERWRITE=NO","GEOM_TYPE=geometry","ENCODING=UTF-8"]
+    OGR_LAYER_PREFS = OGR_DS_PREFS
     
     def __init__(self):
         self.driver = ogr.GetDriverByName(self.DRIVER_NAME)
@@ -249,8 +248,20 @@ class _DS(ABC):
         self.dsl = None
         self.driver = None
         
-    def _getprefs(self):
-        return OGR_COPY_PREFS
+    def _getdsprefs(self):
+        return self.OGR_DS_PREFS
+        
+    def _getlayerprefs(self):
+        return self.OGR_LAYER_PREFS
+
+
+    def clearOverwrite(self): self.setOverwrite(False)
+    def setOverwrite(self,o=True):
+        global OVERWRITE
+        OVERWRITE = o
+        old = self.OGR_DS_PREFS[0]
+        self.OGR_DS_PREFS[0] = 'OVERWRITE={}'.format('YES' if o else 'NO')
+        return old=='OVERWRITE=YES'
         
     def _findSRID(self,name,sr,useweb):
         '''https://stackoverflow.com/a/10807867'''
@@ -330,7 +341,7 @@ class _DS(ABC):
     def create(self,dsn):
         ds = None
         try:
-            ds = self.driver.CreateDataSource(dsn, self._getprefs())
+            ds = self.driver.CreateDataSource(dsn, self._getdsprefs())
             if ds is None:
                 raise DatasourceException("Error opening/creating DS "+str(dsn))
         except DatasourceException:
@@ -367,7 +378,7 @@ class _DS(ABC):
                 raise LayerCompareException('Layer Comparison Exception',comp1,comp2)
         elif comp1['lc']<comp2['lc']:
             #have a new layer. Did the rows copy
-            if any([comp1[i]!=comp2[i] for i in ['n','g','fc']]):
+            if any([comp1[i]!=comp2[i] for i in ['g','fc']]) or comp1['n'].lstrip(DST_TABLE_PREFIX)!= comp2['n'].lstrip(DST_TABLE_PREFIX):
                 raise LayerCompareException('Layer Comparison Exception. CreateLayer Succeeded, CopyLayer Failed',comp1,comp2)
 
 
@@ -383,6 +394,9 @@ class PGDS(_DS):
     DRIVER_NAME = 'PostgreSQL'
     DBNAME = 'reblock'
     CS_TMPLT = "dbname='{2}' host='{0}' port='{1}' user='{3}' password='{4}'"
+
+    OGR_DS_PREFS = ["OVERWRITE=NO","GEOM_TYPE=geometry","ENCODING=UTF-8"]
+    OGR_LAYER_PREFS = OGR_DS_PREFS
 
     cur = None
     conn = None
@@ -418,9 +432,6 @@ class PGDS(_DS):
         if self.connectionstring: return self.connectionstring.split(':')[1].split('active_schema')[0].rstrip()
         go = self._getopts()
         return PGDS.CS_TMPLT.format(go['HOST'],go['PORT'],go['DBNAME'],go['USER'],go['PASS'],)
-    
-    def _getprefs(self):
-        return super(PGDS,self)._getprefs()#+["PRECISION=yes"]
 
     def _getopts(self):
         usr,pwd = CredsReader.userpass(DEF_CREDS)
@@ -467,7 +478,7 @@ class PGDS(_DS):
     def write(self,layerlist):
         '''Attempts to write/copy contents of layerlist using copylayer|per-feat methods'''
         try:
-            old_ow = setOverwrite()
+            old_ow = self.setOverwrite()
             succ1,fail1 = self.write_fast(layerlist)
             if fail1: 
                 succ2,fail2 = self.write_slow(fail1)
@@ -479,13 +490,13 @@ class PGDS(_DS):
             print(e)
             raise
         finally:
-            setOverwrite(old_ow)
+            self.setOverwrite(old_ow)
         return layerlist
 
 
     def write_fast(self,layerlist):
         '''PG write writes to a single DS since a DS represents a DB connection. SRID not transferred!'''
-        successes,failures = [],[]
+        successes,failures = {},{}
         try:
             self.connect()
             for dsn in layerlist:
@@ -495,18 +506,18 @@ class PGDS(_DS):
                     c1 = writeto.GetLayerCount()
                     sridq = "select UpdateGeometrySRID('{}','wkb_geometry',{})".format(dsn[1].lower(),dsn[2])
 
-                    writeto.CopyLayer(layerlist[dsn],dsn[1],self._getprefs())
+                    writeto.CopyLayer(layerlist[dsn],dsn[1],self._getlayerprefs())
                     writeto.ExecuteSQL(sridq)
 
                     c2 = writeto.GetLayerCount()
                     lastlayer = writeto.GetLayer(c2-1)
 
                     self.layerCompare(layerlist[dsn],lastlayer,c1,c2)
-                    successes.append({dsn:layerlist[dsn]})
+                    successes[dsn] = layerlist[dsn]
                 except LayerCompareException as lce:
                     '''This indicates that copylayer failed and we should revert to the feature/feature copy method'''
                     print(lce)
-                    failures(dsn] = layerlist[dsn]
+                    failures[dsn] = layerlist[dsn]
                 except Exception:
                     raise
         finally:
@@ -516,18 +527,18 @@ class PGDS(_DS):
     def write_slow(self,layerlist):
         '''HACK to retain SRS 
         https://gis.stackexchange.com/questions/126705/how-to-set-the-spatial-reference-to-a-ogr-layer-using-the-python-api'''
-        successes,failures = [],[]
+        successes,failures = {},{}
         for dsn in layerlist:
             try:
-                (datasource,layername,geomtype,preferences) = list(self.dsl.values())[0],dsn[1],layerlist[dsn].GetLayerDefn().GetGeomType(),self._getprefs()
+                (datasource,layername,geomtype,preferences) = list(self.dsl.values())[0],dsn[1],layerlist[dsn].GetLayerDefn().GetGeomType(),self._getdsprefs()
                 #print 'PG create layer {}'.format(dsn[1])
                 dstsrs = osr.SpatialReference()
-                dstsrs.ImportFromEPSG(dsn[2])
+                dstsrs.ImportFromEPSG(int(dsn[2]))
                 c1 = datasource.GetLayerCount()
 
                 try:
                     dstlayer = datasource.CreateLayer(layername,dstsrs,geomtype,preferences)
-                    #dstlayer = list(self.dsl.values())[0].CreateLayer(dsn[1],dstsrs,layerlist[dsn].GetLayerDefn().GetGeomType(),self._getprefs())
+                    #dstlayer = list(self.dsl.values())[0].CreateLayer(dsn[1],dstsrs,layerlist[dsn].GetLayerDefn().GetGeomType(),self._getdsprefs())
                 except ValueError as ve:
                     print ('Error Creating Layer on Datasource {}. {}'.format(dsn[1],ve))
 
@@ -580,6 +591,9 @@ class SFDS(_DS):
     
     INIT_VAL = 1
     DRIVER_NAME = 'ESRI Shapefile'
+
+    OGR_DS_PREFS = []
+    OGR_LAYER_PREFS = ["OVERWRITE=NO","GEOM_TYPE=geometry","ENCODING=UTF-8"]
     
     def __init__(self,fname=None):
         super(SFDS,self).__init__()
@@ -600,9 +614,6 @@ class SFDS(_DS):
                 self.dsl = {fname:self.initalise(fname, True)}
         else:
             self.dsl = self._getFileDS()
-            
-    def _getprefs(self):
-        return []
     
     def connstr(self):
         #TODO do something intelligent here like read from a def dir?
@@ -649,7 +660,8 @@ class SFDS(_DS):
         try:
             succ1,fail1 = self.write_fast(layerlist,cropcolumn)
             if fail1: 
-                succ2,fail2 = self.write_alt(fail1,cropcolumn)
+                #succ2,fail2 = self.write_alt(fail1,cropcolumn)
+                succ2,fail2 = self.write_feat(fail1,cropcolumn)
                 if fail2:
                     if len(fail1) == len(fail2)== len(layerlist):
                         raise LayerCompareException('No layers written')
@@ -659,27 +671,31 @@ class SFDS(_DS):
             raise
         return layerlist
 
+    def setupDS(self,dsn):
+        srcname = re.sub('^'+DST_TABLE_PREFIX,'',dsn[1])
+        srcpath = os.path.abspath(self.shppath[0]+DST_SUBDIR)
+        srcfile = os.path.abspath(os.path.join(srcpath,srcname+'.shp'))
+        if not os.path.exists(srcpath): os.mkdir(srcpath)
+        if os.path.exists(srcfile): self.driver.DeleteDataSource(srcfile)
+        return srcname,self.driver.CreateDataSource(srcfile,self._getdsprefs())
+
     def write_fast(self,layerlist,cropcolumn):
         '''TODO. Write new shp per layer overwriting existing'''
         #set gdal exceptions to catch unicode errors
         old = setGdalException()
-        successes,failures = [],[]
+        successes,failures = {},{}
         for dsn in layerlist:
-            srcname = re.sub('^'+DST_TABLE_PREFIX,'',dsn[1])
-            srcpath = os.path.abspath(self.shppath[0]+DST_SUBDIR)
-            srcfile = os.path.abspath(os.path.join(srcpath,srcname+'.shp'))
-            if not os.path.exists(srcpath): os.mkdir(srcpath)
             try:
-                if os.path.exists(srcfile): self.driver.DeleteDataSource(srcfile)
-                dstds = self.driver.CreateDataSource(srcfile)
+                srcname,dstds = self.setupDS(dsn)
+                #dstds = self.driver.Create(srcfile,self._getdsprefs())
                 c1 = dstds.GetLayerCount()
-                cpy = self._copyWrapper(dstds,layerlist,dsn,srcname)
+                cpy = self._copyLayer_wrapper(dstds,layerlist,dsn,srcname)
                 #this section hacked in to add delete column functionality
                 if cropcolumn:
                     col = cpy.GetLayerDefn().GetFieldIndex(cropcolumn)
                     cpy.DeleteField(col)
                 self.layerCompare(layerlist[dsn],cpy,c1,dstds.GetLayerCount())
-                successes.append({dsn:layerlist[dsn]})
+                successes[dsn] = layerlist[dsn]
             except Warning as w:
                 #this is supposed to catch gdal warnings...
                 print (w)
@@ -687,8 +703,7 @@ class SFDS(_DS):
                 #this is supposed to catch gdal errors with GdalExceptions turned on...
                 print (rune)
             except GdalStdoutCaptureException as goc:
-                print(goc)
-                failures(dsn] = layerlist[dsn]
+                failures[dsn] = layerlist[dsn]
             except LayerCompareException as lce:
                 '''This indicates that copylayer failed and we should revert to the feature/feature copy method'''
                 print(lce)
@@ -698,17 +713,126 @@ class SFDS(_DS):
             finally:
                 #now set gdal exceptions back to what they were previously
                 setGdalException(old)
-                dstds.Destroy
+                dstds.SyncToDisk()
+                dstds.Destroy()
         return successes,failures
 
     @captureGdalError
-    def _copyWrapper(self,dstds,layerlist,dsn,srcname):
-        return dstds.CopyLayer(layerlist[dsn],srcname,self._getprefs())
+    def _copyLayer_wrapper(self,dstds,layerlist,dsn,srcname):
+        return dstds.CopyLayer(layerlist[dsn],srcname,self._getlayerprefs())
+        
+    @captureGdalError
+    def _createFeature_wrapper(self,dstlyr,feature):
+        return dstlyr.CreateFeature(feature)
+        
+    @captureGdalError
+    def _createFeatureOverwrite_wrapper(self,dstlyr,feature):
+        dstlyr.CreateFeature(feature)
+        newfeat = self._overwriteField(feature,dstlyr.GetFeature(feature.GetFID()-1))
+        if newfeat: 
+            dstlyr.DeleteFeature(feature.GetFID())
+            dstlyr.CreateFeature(newfeat)
 
+
+
+    def write_feat(self,layerlist,cropcolumn):
+        '''Per-feature writer'''
+        copyFeature  = self._createFeature_wrapper
+        cfid = id(copyFeature)
+        successes,failures = {},{}
+        for dsn in layerlist:
+            old = setGdalException()
+            try:
+                #dstds = self.dsl.values()
+                dstname,dstds = self.setupDS(dsn)
+                geomtype,preferences = layerlist[dsn].GetLayerDefn().GetGeomType(),self._getlayerprefs()
+                #print 'PG create layer {}'.format(dsn[1])
+                dstsrs = osr.SpatialReference()
+                dstsrs.ImportFromEPSG(int(dsn[2]))
+                c1 = dstds.GetLayerCount()
+
+                try:
+                    dstlayer = dstds.CreateLayer(dstname,dstsrs,geomtype,preferences)
+                    #dstlayer = list(self.dsl.values())[0].CreateLayer(dsn[1],dstsrs,layerlist[dsn].GetLayerDefn().GetGeomType(),self._getdsprefs())
+                except ValueError as ve:
+                    print ('Error Creating Layer on Datasource {}. {}'.format(dsn[1],ve))
+
+                # adding fields to new layer
+                layerdef = ogr.Feature(layerlist[dsn].GetLayerDefn())
+                for i in range(layerdef.GetFieldCount()):
+                    dstlayer.CreateField(layerdef.GetFieldDefnRef(i))
+                
+                # adding the features from input to dest
+                
+                layerlist[dsn].ResetReading()
+                feature = layerlist[dsn].GetNextFeature()
+                while feature:
+                    try:
+                        assert cfid == id(copyFeature), 'CopyFeature check fail'
+                        copyFeature(dstlayer,feature)
+                    except GdalStdoutCaptureException as goc:
+                        # the utf-8 error only gets reported once so we have to assume every subsequent call has failed too
+                        # thats why we swap out the create-layer function with the create-overwrite-field one 
+                        copyFeature = self._createFeatureOverwrite_wrapper
+                        cfid = id(copyFeature)
+                        #Now just try and fix the incorrect but already written feature
+                        try:
+                            self._overwriteField(feature,dstlayer.GetFeature(feature.GetFID()-1))
+                        except Exception as e:
+                            print('Field copy didn\'t work, bailing out',e)
+                            raise
+                        
+                        #copyFeature(dstlayer,feature)
+                        #failures[dsn] = layerlist[dsn]
+                    except ValueError as ve:
+                        print ('Error Creating Feature on Layer {}. {}'.format(dsn[1],ve))
+                    feature = layerlist[dsn].GetNextFeature()
+
+                c2 = layerlist[dsn].GetFeatureCount()
+
+                #for i in range(0, c1):
+                #    feature = layerlist[dsn].GetFeature(i)
+                #    try:
+                #        dstlayer.CreateFeature(feature)
+                #    except ValueError as ve:
+                #        print ('Error Creating Feature on Layer {}. {}'.format(dsn[1],ve))
+                        
+                #self.layerCompare(layerlist[dsn],dstlayer,c1,c2)
+                successes[dsn] = layerlist[dsn]
+            except LayerCompareException as lce:
+                print(lce)
+                failures[dsn] = layerlist[dsn]
+            except Exception:
+                raise
+            finally:
+                #now set gdal exceptions back to what they were previously
+                setGdalException(old)
+                dstds.SyncToDisk()
+                dstds.Destroy()
+        return successes,failures
+
+    def _overwriteField(self,srcfeat,dstfeat):
+        #macvowels = ['u0100','u0101','u0112','u0113','u012A','u012B','u014C','u014D','u016A','u016B']
+        ffield = []
+        sfc = srcfeat.GetFieldCount()
+        for i in range(0,sfc):
+            fvalue = srcfeat.GetFieldAsString(i)
+            fname = srcfeat.GetFieldDefnRef(i).name
+            ftype = srcfeat.GetFieldDefnRef(i).type
+            ffield.append( {'n':fname,'t':ftype,'v':fvalue,'i':i} )
+        pprint(ffield)
+        if any([f['n'] == 'macronated' and f['v'] == 'Y' for f in ffield]):
+            value = [(f['i'],f['v'].encode('utf-8')) for f in ffield if f['n'] == 'name' and f['t'] == 4][0]
+            print('Writing',value[1],'to shapefile')
+            dstfeat.SetFieldString(value[0],value[1])
+            print('Actually wrote',dstfeat.GetFieldAsString(value[0]))
+            #assert dstfeat.GetFieldAsString(value[0]) == value[1], 'Unequal written fields'
+            return dstfeat
+        return None
 
     def write_alt(self,layerlist,cropcolumn):
         '''Alternative shape writer, still uses copylayer'''
-        successes,failures = [],[]
+        successes,failures = {},{}
         for dsn in layerlist:
             #dsn = ("PG:dbname='reblock' host='127.0.0.1' port='5432' active_schema=public", 'new_native_poly')
             #srcname = dsn[1].split('.')[-1]
@@ -727,9 +851,11 @@ class SFDS(_DS):
                             if os.path.isfile(f): 
                                 try: os.remove(f)
                                 except : shutil.rmtree(f, ignore_errors=True)
-                dstds = self.driver.CreateDataSource(srcfile)
+                dstds = self.driver.CreateDataSource(srcfile,self._getdsprefs())
+                #dstds = self.driver.Create(srcfile,self._getdsprefs())
                 c1 = dstds.GetLayerCount()
-                dstds.CopyLayer(layerlist[dsn],srcname,self._getprefs())
+                self._copyLayerWrapper(dstds,layerlist,dsn,srcname)
+                #dstds.CopyLayer(layerlist[dsn],srcname,self._getlayerprefs())
 
                 c2 = dstds.GetLayerCount()
                 lastlayer = dstds.GetLayer(c2-1)
@@ -845,7 +971,7 @@ def main():
             actionflag = 4
         if o in ("-o", "--overwrite"):
             OVERWRITE = True
-            OGR_COPY_PREFS[0] = 'OVERWRITE=YES'
+            #OGR_COPY_PREFS[0] = 'OVERWRITE=YES'
         if o in ("-s","--select"):
             selectflag = True
         if o in ("-d", "--dir"):
@@ -898,7 +1024,7 @@ def setConfig(uiconfig,config):
 
 def convert(uiconfig,config):
     setConfig(uiconfig,config)
-    setOverwrite(uiconfig.opt_overwrite)
+    #setOverwrite(uiconfig.opt_overwrite)
     # layer [A2] set to None since never used and acts as filter
     # actionflag [A4] set to 7=import/process/export
     # selectflag [A5] set to True = only process shp in dir

@@ -39,8 +39,7 @@ import json
 import shutil
 import warnings
 from six import StringIO
-from six.moves import urllib as u_lib
-from six.moves.urllib.error import HTTPError
+from six.moves import urllib as ulib
 from pprint import pprint
 
 #Python 3
@@ -54,10 +53,10 @@ abstractmethod = abc.abstractmethod
 #PYVER3 = sys.version_info > (3,)
 #2 to 3 imports
 #if PYVER3:
-#    import urllib.request as u_lib
+#    import urllib.request as ulib
 #    from urllib.error import HTTPError
 #else:
-#    import urllib2 as u_lib
+#    import urllib2 as ulib
 #    from urllib2 import HTTPError
 
 try:
@@ -144,6 +143,7 @@ def captureGdalError(func):
             sys.stderr.close()
             sys.stdout.close()
             sys.stderr,sys.stdout = stderr_fileno,stdout_fileno
+            #now repeat the captured errors to the console
             if err: print('x',err,end='')
             if out: print('o',out,end='')
         return rv
@@ -280,20 +280,20 @@ class _DS(ABC):
         purl='127.0.0.1:3128'
         pscheme="http"
         
-        uuwkt = uu + u_lib.quote(wkt)
+        uuwkt = uu + ulib.parse.quote(wkt)
         
         handlers = [
-                u_lib.HTTPHandler(),
-                u_lib.HTTPSHandler(),
-                u_lib.ProxyHandler({pscheme: purl})
+                ulib.request.HTTPHandler(),
+                ulib.request.HTTPSHandler(),
+                ulib.request.ProxyHandler({pscheme: purl})
             ]
-        opener = u_lib.build_opener(*handlers)
-        u_lib.install_opener(opener)
+        opener = ulib.request.build_opener(*handlers)
+        ulib.request.install_opener(opener)
         
         try:
-            res = u_lib.urlopen(uuwkt)
+            res = ulib.request.urlopen(uuwkt)
             return int(json.loads(res.read())['codes'][0]['code'])
-        except HTTPError as he:
+        except ulib.error.HTTPError as he:
             print ('SRS WS Convert Error {0}'.format(he))
         
     
@@ -479,9 +479,9 @@ class PGDS(_DS):
         '''Attempts to write/copy contents of layerlist using copylayer|per-feat methods'''
         try:
             old_ow = self.setOverwrite()
-            succ1,fail1 = self.write_fast(layerlist)
+            succ1,fail1 = self.writeLayer(layerlist)
             if fail1: 
-                succ2,fail2 = self.write_slow(fail1)
+                succ2,fail2 = self.writeFeature(fail1)
                 if fail2:
                     if len(fail1) == len(fail2)== len(layerlist):
                         raise LayerCompareException('No layers written')
@@ -494,7 +494,7 @@ class PGDS(_DS):
         return layerlist
 
 
-    def write_fast(self,layerlist):
+    def writeLayer(self,layerlist):
         '''PG write writes to a single DS since a DS represents a DB connection. SRID not transferred!'''
         successes,failures = {},{}
         try:
@@ -524,7 +524,7 @@ class PGDS(_DS):
             self.disconnect()
         return successes,failures
     
-    def write_slow(self,layerlist):
+    def writeFeature(self,layerlist):
         '''HACK to retain SRS 
         https://gis.stackexchange.com/questions/126705/how-to-set-the-spatial-reference-to-a-ogr-layer-using-the-python-api'''
         successes,failures = {},{}
@@ -658,10 +658,10 @@ class SFDS(_DS):
     def write(self,layerlist,cropcolumn=None):
         '''Attempt to two different write/copy methods'''
         try:
-            succ1,fail1 = self.write_fast(layerlist,cropcolumn)
+            succ1,fail1 = self.writeLayer(layerlist,cropcolumn)
             if fail1: 
-                #succ2,fail2 = self.write_alt(fail1,cropcolumn)
-                succ2,fail2 = self.write_feat(fail1,cropcolumn)
+                #succ2,fail2 = self.writeLayerAlt(fail1,cropcolumn)
+                succ2,fail2 = self.writeFeature(fail1,cropcolumn)
                 if fail2:
                     if len(fail1) == len(fail2)== len(layerlist):
                         raise LayerCompareException('No layers written')
@@ -679,7 +679,7 @@ class SFDS(_DS):
         if os.path.exists(srcfile): self.driver.DeleteDataSource(srcfile)
         return srcname,self.driver.CreateDataSource(srcfile,self._getdsprefs())
 
-    def write_fast(self,layerlist,cropcolumn):
+    def writeLayer(self,layerlist,cropcolumn):
         '''TODO. Write new shp per layer overwriting existing'''
         #set gdal exceptions to catch unicode errors
         old = setGdalException()
@@ -735,7 +735,7 @@ class SFDS(_DS):
 
 
 
-    def write_feat(self,layerlist,cropcolumn):
+    def writeFeature(self,layerlist,cropcolumn):
         '''Per-feature writer'''
         copyFeature  = self._createFeature_wrapper
         cfid = id(copyFeature)
@@ -790,14 +790,7 @@ class SFDS(_DS):
 
                 c2 = layerlist[dsn].GetFeatureCount()
 
-                #for i in range(0, c1):
-                #    feature = layerlist[dsn].GetFeature(i)
-                #    try:
-                #        dstlayer.CreateFeature(feature)
-                #    except ValueError as ve:
-                #        print ('Error Creating Feature on Layer {}. {}'.format(dsn[1],ve))
-                        
-                #self.layerCompare(layerlist[dsn],dstlayer,c1,c2)
+                self.layerCompare(layerlist[dsn],dstlayer,c1,c2)
                 successes[dsn] = layerlist[dsn]
             except LayerCompareException as lce:
                 print(lce)
@@ -823,14 +816,13 @@ class SFDS(_DS):
         pprint(ffield)
         if any([f['n'] == 'macronated' and f['v'] == 'Y' for f in ffield]):
             value = [(f['i'],f['v'].encode('utf-8')) for f in ffield if f['n'] == 'name' and f['t'] == 4][0]
-            print('Writing',value[1],'to shapefile')
             dstfeat.SetFieldString(value[0],value[1])
-            print('Actually wrote',dstfeat.GetFieldAsString(value[0]))
+            print('Write',value[1],'-> Read',dstfeat.GetFieldAsString(value[0]))
             #assert dstfeat.GetFieldAsString(value[0]) == value[1], 'Unequal written fields'
             return dstfeat
         return None
 
-    def write_alt(self,layerlist,cropcolumn):
+    def writeLayerAlt(self,layerlist,cropcolumn):
         '''Alternative shape writer, still uses copylayer'''
         successes,failures = {},{}
         for dsn in layerlist:
@@ -854,7 +846,7 @@ class SFDS(_DS):
                 dstds = self.driver.CreateDataSource(srcfile,self._getdsprefs())
                 #dstds = self.driver.Create(srcfile,self._getdsprefs())
                 c1 = dstds.GetLayerCount()
-                self._copyLayerWrapper(dstds,layerlist,dsn,srcname)
+                self._copyLayer_wrapper(dstds,layerlist,dsn,srcname)
                 #dstds.CopyLayer(layerlist[dsn],srcname,self._getlayerprefs())
 
                 c2 = dstds.GetLayerCount()
@@ -1025,6 +1017,8 @@ def setConfig(uiconfig,config):
 def convert(uiconfig,config):
     setConfig(uiconfig,config)
     #setOverwrite(uiconfig.opt_overwrite)
+    global OVERWRITE
+    OVERWRITE = uiconfig.opt_overwrite
     # layer [A2] set to None since never used and acts as filter
     # actionflag [A4] set to 7=import/process/export
     # selectflag [A5] set to True = only process shp in dir

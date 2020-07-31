@@ -49,3 +49,46 @@ python LayerReader [-h|--help]|[-c|--cropregion][-i|--import][-e|--export][-p|--
 -r/--release : Release reblocking data to topo_rdb
 -z/--linkrelease : Link and Release reblocking data to topo_rdb
 ```
+
+# MAINTENANCE
+
+The reblocker consists of two parts. The client part where the user manages shapefiles selecting files they want to have processed. Results are typically generated back to the user as modfified shapefiles once processing completes. The server part of the applicaion is really just a database table preserving generated feature IDs and a some postgis functions that process feature joins.
+
+## Client 
+
+The client is a Python script called LayerReader.py . Users run this directly adding options as listed above. The LayerReader module has a Shapefile and a Postgres class with read/write methods and some common utilities. The read write process basically follows the format
+
+DS1.init('db')
+DS2.init('shp')
+DS1.write(DS2.read())
+DS1.process()
+DS2.write(DS1.read())
+
+Notes. 
+1. SetupDS subverts this process
+2. Gdal printed errors are caught using the @capture... decorator
+3. ReblockerUI and ReblockerServer are WIP intended to provide a GUI component and push file management to a server
+4. CropRegions are geographically distinct user defined regions (e.g. NI/SI) that split processing load
+
+## Database
+
+The database module contains functions that preprocess and filter potential reblock candidate features. The function that refines the possible features to reblock is the generate_rbl function which sequentially filters the features in a layer achieving a minimimal candidate list. The workhorse function that actually joins features together is the generate_aggrbl function. This works using a recursive aggregate that appends feature segments together. Two other important function are the ufid_generator and the ufid_sequence functions. These track whether a ufid has been assigned previously based on component fids and generates a new sequence if a set of component fids hasn't been seen before.
+
+Once a layer has been submitted for processing the following actions occur;
+1. The dataset is split between cropregion bounds
+2. Round edge points so they match boundry lines (exvals)
+3. A determination is made whether edge points touch mapsheet boundaries (msfilter)
+4. Filter only touching points (srcpoly)
+5. Cross match all layer features to see if they touch
+6. Output 1-to-1 list of joins to perform. This is the "reblocklist"
+7. Action notified joins
+
+
+Notes.
+1. Feature edges are (in part) detected based on whether they touch mapsheet boundaries. The northsouth/eastwest functions calculate these boundaries. Other boundaries are arbitrary and hardcoded in the function, nonstandard.
+2. Whether edges/points touch is quite dependent on some hardcoded parameters, std_id and std_mv, which define snap-to-grid accuracy. 
+3. Attention should be paid to Great Barrier Island. Ask Topo about this
+4. The Rename Strategy spreadheet outlines the procedure that is followed for ID renaming when a feature translates/scales or merges/splits with another feature.
+
+
+```

@@ -1,4 +1,4 @@
-﻿--
+--
 -- Reblocking SQL
 -- Version - 1.0
 -- Date - 24-04-2015
@@ -22,13 +22,13 @@ CREATE OR REPLACE FUNCTION rbl_init(atab text,rtab text) RETURNS void AS
 --Initialise the report/assoc tables. TODO pass atab/rtab names as args to calling funcs
 $BODY$
 BEGIN
-	raise notice 'Initialising % & %.',atab,rtab;
-	execute 'create table if not exists '||rtab||' (ref int, msg text, ts timestamp)';
-	execute 'grant all on table '||rtab||' TO public';
-	execute 'create table if not exists '||atab||' (ts timestamp, layer varchar,ufid int, ufid_components int[])';
-	execute 'grant all on table '||atab||' TO public';
-	--execute 'create index on '||atab||' (ufid,ufid_components)'; blows out using contours
-	--execute 'create index '||atab||'_idx on '||atab||' using gin (ufid,ufid_components)';gin wont do int/int[] composite
+    raise notice 'Initialising % & %.',atab,rtab;
+    execute 'create table if not exists '||rtab||' (ref int, msg text, ts timestamp)';
+    execute 'grant all on table '||rtab||' TO public';
+    execute 'create table if not exists '||atab||' (ts timestamp, layer varchar,ufid int, ufid_components int[])';
+    execute 'grant all on table '||atab||' TO public';
+    --execute 'create index on '||atab||' (ufid,ufid_components)'; blows out using contours
+    --execute 'create index '||atab||'_idx on '||atab||' using gin (ufid,ufid_components)';gin wont do int/int[] composite
 END
 $BODY$
 LANGUAGE plpgsql VOLATILE;
@@ -39,26 +39,26 @@ CREATE OR REPLACE FUNCTION ufid_column_identifier(qtab text) RETURNS text AS
 -- Attempts to guess the name of the primary-key/ufid column (if this is not provided)
 $BODY$
 DECLARE 
-	colname text;
-	q1 text;
-	res text;
+    colname text;
+    q1 text;
+    res text;
 BEGIN
-	q1 = 'select column_name'
-	|| ' from information_schema.columns'
-	|| ' where table_name='||quote_literal(qtab)
-	|| ' and not column_name = any(array[''ogc_fid'',''wkb_geometry''])';
+    q1 = 'select column_name'
+    || ' from information_schema.columns'
+    || ' where table_name='||quote_literal(qtab)
+    || ' and not column_name = any(array[''ogc_fid'',''wkb_geometry''])';
 
-	for colname in execute q1
-	loop
-		q1 = 'select max(count) from (select count(*),'||colname||' from '||qtab||' group by '||colname||') a';
-		
-		execute q1 into res;
-		if res='1' then
-			raise notice'UFID DETECT %',colname;
-			return colname;
-		end if;
-	end loop;
-	
+    for colname in execute q1
+    loop
+        q1 = 'select max(count) from (select count(*),'||colname||' from '||qtab||' group by '||colname||') a';
+        
+        execute q1 into res;
+        if res='1' then
+            raise notice'UFID DETECT %',colname;
+            return colname;
+        end if;
+    end loop;
+    
 return 'ufid';
 END
 $BODY$
@@ -72,65 +72,66 @@ CREATE OR REPLACE FUNCTION reblockall(pkey text, filter text[], overwrite boolea
 --Main reblocking function calling all tables in schema filtered by filter list
 $BODY$
 DECLARE
-	res boolean;
-	q1 TEXT;
-	rc int;
-	layer character varying;
-	gtype character varying;
-	schma character varying := 'public';
-	xtabl character varying := 'spatial_ref_sys';
-	defsrid int := 2193;
-	smsg text;
-	prefix text := 'new';
-	boundary text := 'cropregions';
-	atab text := 'rbl_associations';
-	rtab text := 'rbl_report';
-	-- st_collect vs st_union; st_union performs consistency checks but slower and fails on loops
-	join_func_poly text := 'st_collect';
-	join_func_line text := 'st_linemerge(st_collect';
-	qs text := '';
-	usepkey text;
-	
-	changeset text[];
+    res boolean;
+    q1 TEXT;
+    rc int;
+    layer character varying;
+    gtype character varying;
+    schma character varying := 'public';
+    xtabl character varying := 'spatial_ref_sys';
+    defsrid int := 2193;
+    smsg text;
+    prefix text := 'new';
+    boundary text := 'cropregions';
+    atab text := 'rbl_associations';
+    rtab text := 'rbl_report';
+    -- st_collect vs st_union; st_union performs consistency checks but slower and fails on loops
+    join_func_poly text := 'st_collect';
+    join_func_line text := 'st_linemerge(st_collect';
+    qs text := '';
+    usepkey text;
+    
+    changeset text[];
+
 BEGIN
-	execute 'select rbl_init('||quote_literal(atab)||','||quote_literal(rtab)||')';
-	------------------------------------------------------------------------
-	
-	if array_length(filter,1)>0 then
-		qs = ' and tablename = any('||quote_literal(filter)||')';
-	end if;
-	
-	q1 = 'select tablename'
-	|| ' from pg_tables'
-	|| ' where schemaname = '||quote_literal(schma)
-	|| ' and tablename != '||quote_literal(xtabl)
-	|| ' and tablename != '||quote_literal(boundary)
-	|| ' and tablename != '||quote_literal(atab)
-	|| ' and tablename != '||quote_literal(rtab)
-	--|| ' and tablename like '||quote_literal('%_poly')
-	|| qs
-	|| ' order by tablename';
-	--raise notice 'qs=%',qs;
-	--raise notice 'q1=%',q1;
-	--return True;
-	for layer in execute q1
-	loop
-		if pkey = 'unknown' then
-			execute 'select ufid_column_identifier('||quote_literal(layer)||')' into usepkey;
-		else
-			usepkey = pkey;
-		end if;
-		
-		raise notice 'Reblocking Layer %/%. %',layer,usepkey,clock_timestamp();
-		execute 'select GeometryType(wkb_geometry::geometry) from '||quote_ident(layer) into gtype;
-		
-		if gtype in ('POLYGON','MULTIPOLYGON') then
-			res = reblocksplitter(layer, prefix, usepkey, boundary, join_func_poly,True);
-		elsif gtype in ('LINESTRING','MULTILINESTRING') then
-			res = reblocksplitter(layer, prefix, usepkey, boundary, join_func_line,False);
-		end if;
-	end loop;
-	raise notice 'Reblocking Complete. %',clock_timestamp();
+    execute 'select rbl_init('||quote_literal(atab)||','||quote_literal(rtab)||')';
+    ------------------------------------------------------------------------
+    
+    if array_length(filter,1)>0 then
+        qs = ' and tablename = any('||quote_literal(filter)||')';
+    end if;
+    
+    q1 = 'select tablename'
+    || ' from pg_tables'
+    || ' where schemaname = '||quote_literal(schma)
+    || ' and tablename != '||quote_literal(xtabl)
+    || ' and tablename != '||quote_literal(boundary)
+    || ' and tablename != '||quote_literal(atab)
+    || ' and tablename != '||quote_literal(rtab)
+    --|| ' and tablename like '||quote_literal('%_poly')
+    || qs
+    || ' order by tablename';
+    --raise notice 'qs=%',qs;
+    --raise notice 'q1=%',q1;
+    --return True;
+    for layer in execute q1
+    loop
+        if pkey = 'unknown' then
+            execute 'select ufid_column_identifier('||quote_literal(layer)||')' into usepkey;
+        else
+            usepkey = pkey;
+        end if;
+        
+        raise notice 'Reblocking Layer %/%. %',layer,usepkey,clock_timestamp();
+        execute 'select GeometryType(wkb_geometry::geometry) from '||quote_ident(layer) into gtype;
+        
+        if gtype in ('POLYGON','MULTIPOLYGON') then
+            res = reblocksplitter(layer, prefix, usepkey, boundary, join_func_poly,True);
+        elsif gtype in ('LINESTRING','MULTILINESTRING') then
+            res = reblocksplitter(layer, prefix, usepkey, boundary, join_func_line,False);
+        end if;
+    end loop;
+    raise notice 'Reblocking Complete. %',clock_timestamp();
 RETURN True;
 END
 $BODY$
@@ -161,20 +162,20 @@ delim = 'create table '||quote_ident(inttable)||' as';
 q1 = 'select region from '||boundary;--cropregions';-- order by id asc limit 1';
 for region in execute q1
 loop
-	--raise notice 'PKEY=%',pkey;
-	newtable1 = quote_ident(region)||'_northsouth_'||quote_ident(original);
-	execute 'drop table if exists '||newtable1 as res;
-	raise notice '### Merge NorthSouth borders for region=% on layer=%',region,original;
-	res = reblockfaster(original,original,pkey,op,touch,boundary,region,newtable1,True);
+    --raise notice 'PKEY=%',pkey;
+    newtable1 = quote_ident(region)||'_northsouth_'||quote_ident(original);
+    execute 'drop table if exists '||newtable1 as res;
+    raise notice '### Merge NorthSouth borders for region=% on layer=%',region,original;
+    res = reblockfaster(original,original,pkey,op,touch,boundary,region,newtable1,True);
 
-	newtable2 = quote_ident(region)||'_eastwest_'||quote_ident(original);
-	execute 'drop table if exists '||newtable2 as res;
-	raise notice '### Merge EastWest borders for region=% on layer=%',region,newtable1;
-	res = reblockfaster(original,newtable1,pkey,op,touch,boundary,region,newtable2,False);
+    newtable2 = quote_ident(region)||'_eastwest_'||quote_ident(original);
+    execute 'drop table if exists '||newtable2 as res;
+    raise notice '### Merge EastWest borders for region=% on layer=%',region,newtable1;
+    res = reblockfaster(original,newtable1,pkey,op,touch,boundary,region,newtable2,False);
 
-	fstr = fstr || delim ||' select * from '||quote_ident(newtable2); 
-	dstr = dstr || 'drop table '||quote_ident(newtable1)||';drop table '||quote_ident(newtable2)||';'; 
-	delim = ' union ';
+    fstr = fstr || delim ||' select * from '||quote_ident(newtable2); 
+    dstr = dstr || 'drop table '||quote_ident(newtable1)||';drop table '||quote_ident(newtable2)||';'; 
+    delim = ' union ';
 end loop;
 
 qstr = 'drop table if exists '||quote_ident(inttable);
@@ -211,7 +212,7 @@ cstr = array_to_string(array(select ' '||prefix||c.column_name||' '
             where table_name = layer 
             and not c.column_name = any (omissions)
             order by c.ordinal_position
-	),delim);
+    ),delim);
 
 if torl='T' and not cstr='' then return cstr||delim;
 elsif torl='L' and not cstr='' then return delim||cstr;
@@ -303,15 +304,15 @@ DECLARE
 res boolean;
 nsmsb text := 
    '5862000,2092000,1144000,1844000,1868000,1436000,5598000,5034000,5826000,5790000,
-	1484000,1500000,5106000,5826000,5973000,1748000,4722000,1620000,4740000,5502000,
-	1084000,2084000,5670000,1528000,1116000,1940000,1916000,6114000,1092000,5598000,
-	4842000,6198000,1892000,5682000,5070000,5502000,6198000,1940000,6006000,5142000,
-	1604000,6114000,5178000,1580000,1868000,1620000,1524000,4878000,1504000,1940000,
-	5937000,5538000,2092000,1740000,1764000,1460000,1964000,1980000,1892000,1700000,
-	5826000,5214000,5718000,5790000,5466000,1644000,5562000,6198000,2036000,5178000,
-	6150000,1716000,4776000,5466000,1844000,1868000,2060000,5502000,5142000,1772000,
-	1120000,1740000,1508000,1916000,1084000,6042000,6150000,5430000,1844000,1596000,
-	5634000,5538000,1956000,1676000,1868000,5634000,1964000,6234000,2012000';
+    1484000,1500000,5106000,5826000,5973000,1748000,4722000,1620000,4740000,5502000,
+    1084000,2084000,5670000,1528000,1116000,1940000,1916000,6114000,1092000,5598000,
+    4842000,6198000,1892000,5682000,5070000,5502000,6198000,1940000,6006000,5142000,
+    1604000,6114000,5178000,1580000,1868000,1620000,1524000,4878000,1504000,1940000,
+    5937000,5538000,2092000,1740000,1764000,1460000,1964000,1980000,1892000,1700000,
+    5826000,5214000,5718000,5790000,5466000,1644000,5562000,6198000,2036000,5178000,
+    6150000,1716000,4776000,5466000,1844000,1868000,2060000,5502000,5142000,1772000,
+    1120000,1740000,1508000,1916000,1084000,6042000,6150000,5430000,1844000,1596000,
+    5634000,5538000,1956000,1676000,1868000,5634000,1964000,6234000,2012000';
 
 BEGIN
 execute 'select case when array['||nsmsb||']::int[] && array['||cc||'::int] then True else False end' into res;
@@ -355,25 +356,25 @@ roundval int;
 BEGIN
 
 if firstpass then 
-	nsewbound = nsbound;
-	--nsewfilter = nsfilter;
-	nsewfilter = nsfilter||' or '||nsxxfilt;
+    nsewbound = nsbound;
+    --nsewfilter = nsfilter;
+    nsewfilter = nsfilter||' or '||nsxxfilt;
 else 
-	nsewbound = ewbound;
-	--nsewfilter = ewfilter;
-	nsewfilter = ewfilter||' or '||ewxxfilt;
+    nsewbound = ewbound;
+    --nsewfilter = ewfilter;
+    nsewfilter = ewfilter||' or '||ewxxfilt;
 end if;
 
 if touch then
-	--snap for polys
-	snapgrid = snapgridon;
-	msbndry = map_sheet_bndry_poly;
-	roundval = 0;
+    --snap for polys
+    snapgrid = snapgridon;
+    msbndry = map_sheet_bndry_poly;
+    roundval = 0;
 else
-	--snap off for lines
-	snapgrid = snapgridoff;
-	msbndry = map_sheet_bndry_line;
-	roundval = 2;
+    --snap off for lines
+    snapgrid = snapgridoff;
+    msbndry = map_sheet_bndry_line;
+    roundval = 2;
 end if;
 
 -- DOC 
@@ -388,37 +389,37 @@ end if;
 execute 'drop table if exists '||rbl as res;
 qstr = 'create temporary table '||rbl||' as'
 || ' with bound as ('
-|| ' 	select  '||coltext||snapgrid||' as stg_geometry,'
-|| '    st_extent('||snapgrid||') as ex'	
-|| ' 	from '||quote_ident(layer)||' p'
-|| ' 	join '||quote_ident(bndry)||' cr '
-|| ' 	on cr.region='||quote_literal(region) 	
-|| ' 	and st_intersects(p.wkb_geometry,cr.wkb_geometry::geometry)'
-|| ' 	group by '||coltext||'stg_geometry' 
+|| '    select  '||coltext||snapgrid||' as stg_geometry,'
+|| '    st_extent('||snapgrid||') as ex'    
+|| '    from '||quote_ident(layer)||' p'
+|| '    join '||quote_ident(bndry)||' cr '
+|| '    on cr.region='||quote_literal(region)   
+|| '    and st_intersects(p.wkb_geometry,cr.wkb_geometry::geometry)'
+|| '    group by '||coltext||'stg_geometry' 
 || ' ), exvals as ('
-|| ' 	select  '||coltext
-|| ' 	p.stg_geometry,'
-|| ' 	round(st_ymax(p.stg_geometry)::numeric,'||roundval||') as Nv,'
-|| ' 	round(st_ymin(p.stg_geometry)::numeric,'||roundval||') as Sv,' 	
-|| ' 	round(st_xmax(p.stg_geometry)::numeric,'||roundval||') as Ev,'
-|| ' 	round(st_xmin(p.stg_geometry)::numeric,'||roundval||') as Wv'
-|| ' 	from bound p '
-|| ' ), msfilter as (' 	
-|| ' 	select '||coltext||'p.stg_geometry,p.Nv,p.Sv,p.Ev,p.Wv,' 
-|| ' 	mod(p.Nv::numeric,'||quote_literal(map_sheet_ident)||')=0 as N,' 
-|| ' 	mod(p.Sv::numeric,'||quote_literal(map_sheet_ident)||')=0 as S,'	
-|| ' 	mod(p.Ev::numeric,'||quote_literal(map_sheet_ident)||')=0 as E,' 
-|| ' 	mod(p.Wv::numeric,'||quote_literal(map_sheet_ident)||')=0 as W'
-|| ' 	from exvals p'
+|| '    select  '||coltext
+|| '    p.stg_geometry,'
+|| '    round(st_ymax(p.stg_geometry)::numeric,'||roundval||') as Nv,'
+|| '    round(st_ymin(p.stg_geometry)::numeric,'||roundval||') as Sv,'  
+|| '    round(st_xmax(p.stg_geometry)::numeric,'||roundval||') as Ev,'
+|| '    round(st_xmin(p.stg_geometry)::numeric,'||roundval||') as Wv'
+|| '    from bound p '
+|| ' ), msfilter as ('  
+|| '    select '||coltext||'p.stg_geometry,p.Nv,p.Sv,p.Ev,p.Wv,' 
+|| '    mod(p.Nv::numeric,'||quote_literal(map_sheet_ident)||')=0 as N,' 
+|| '    mod(p.Sv::numeric,'||quote_literal(map_sheet_ident)||')=0 as S,'    
+|| '    mod(p.Ev::numeric,'||quote_literal(map_sheet_ident)||')=0 as E,' 
+|| '    mod(p.Wv::numeric,'||quote_literal(map_sheet_ident)||')=0 as W'
+|| '    from exvals p'
 || ' ), srcpoly as ('
-|| '	select * from msfilter' 	
-|| ' 	where '||nsewfilter
+|| '    select * from msfilter'     
+|| '    where '||nsewfilter
 || ' ), linked as (' 
-|| ' 	select t1.'||pkey||' as merge_id, t2.'||pkey||' as drop_id'  
-|| ' 	from srcpoly as t1, srcpoly as t2'
-|| ' 	where t1.'||pkey||'>t2.'||pkey  
-|| ' 	and '||noidgeo||nsewbound
-|| ' 	and st_relate(t1.stg_geometry,t2.stg_geometry,'||quote_literal(msbndry)||')'
+|| '    select t1.'||pkey||' as merge_id, t2.'||pkey||' as drop_id'  
+|| '    from srcpoly as t1, srcpoly as t2'
+|| '    where t1.'||pkey||'>t2.'||pkey  
+|| '    and '||noidgeo||nsewbound
+|| '    and st_relate(t1.stg_geometry,t2.stg_geometry,'||quote_literal(msbndry)||')'
 || ' ) select merge_id::int, drop_id::int from linked order by merge_id asc, drop_id asc';
 
 raise notice 'RBL %',qstr;
@@ -456,36 +457,36 @@ BEGIN
 execute 'drop table if exists '||arbl as res;
 qstr = 'create temporary table '||arbl||' as'
 || ' with recursive innerrbl as ('
-|| ' 	select array[merge_id,drop_id] ab, 0::int u from '||rbl
+|| '    select array[merge_id,drop_id] ab, 0::int u from '||rbl
 || ' union'
-|| '	select array_rbl_agg(aab.ab) x,aub.ab u' 
-|| '	from ('
-|| '		select ab from innerrbl'
-|| '	) aab,' 
-|| '	('
-|| '		select distinct ab from (select merge_id ab from '||rbl||' union select drop_id ab from '||rbl||') r2'
-|| '	) aub' 
-|| '	where aub.ab = any(aab.ab) group by aub.ab'
+|| '    select array_rbl_agg(aab.ab) x,aub.ab u' 
+|| '    from ('
+|| '        select ab from innerrbl'
+|| '    ) aab,' 
+|| '    ('
+|| '        select distinct ab from (select merge_id ab from '||rbl||' union select drop_id ab from '||rbl||') r2'
+|| '    ) aub' 
+|| '    where aub.ab = any(aab.ab) group by aub.ab'
 || ' ),'
 || ' outerrbl as ('
-|| '	select distinct ab idarray from ('
-|| '		select array_rbl_agg(ab) ab,u from innerrbl where not u=0 group by u'
-|| ' 	) s'
+|| '    select distinct ab idarray from ('
+|| '        select array_rbl_agg(ab) ab,u from innerrbl where not u=0 group by u'
+|| '    ) s'
 || ' ),'
 || ' frbl(feats,fal) as ('
-|| ' 	select distinct'
-|| ' 	r.idarray as feats, array_length(r.idarray,1) as al'
-|| ' 	from outerrbl r'
-|| ' 	join (select idarray[1] as mnv, max(array_length(idarray,1)) as mxl from outerrbl group by idarray[1]) m'
-|| ' 	on m.mnv=r.idarray[1] and m.mxl=array_length(r.idarray,1) '
-|| ' 	where r.idarray @> any(select idarray from outerrbl)'
+|| '    select distinct'
+|| '    r.idarray as feats, array_length(r.idarray,1) as al'
+|| '    from outerrbl r'
+|| '    join (select idarray[1] as mnv, max(array_length(idarray,1)) as mxl from outerrbl group by idarray[1]) m'
+|| '    on m.mnv=r.idarray[1] and m.mxl=array_length(r.idarray,1) '
+|| '    where r.idarray @> any(select idarray from outerrbl)'
 || ' ),'
 || ' fincl(flist,occur) as ('
-|| ' 	select a.feats as af,'
-|| ' 	max(case when a.u = any(f.feats) and f.fal!=a.fal then 1 else 0 end) as mx'
-|| ' 	from (select feats,fal,unnest(feats) as u from frbl) a'
-|| ' 	join frbl f on a.fal<=f.fal'
-|| ' 	group by af'
+|| '    select a.feats as af,'
+|| '    max(case when a.u = any(f.feats) and f.fal!=a.fal then 1 else 0 end) as mx'
+|| '    from (select feats,fal,unnest(feats) as u from frbl) a'
+|| '    join frbl f on a.fal<=f.fal'
+|| '    group by af'
 || ' ) select flist from fincl where occur=0';
 
 raise notice 'ARBL %',qstr;
@@ -527,7 +528,7 @@ atab text := 'rbl_associations';
 BEGIN
 --NB Common column name for PK in assoc table, not necessarily actual PK name. Using 'ufid'
 q1 = 'with latest as ('
-|| ' 	select max(ts) mts '
+|| '    select max(ts) mts '
 || '    from '||atab
 || '    where ufid_components::int[]='||quote_literal(flist)||'::int[]'
 --|| '    and layer like '''||quote_ident(ctab)||'''' --add these lines back in if we revert to table independent sequencing
@@ -544,8 +545,8 @@ q1 = 'with latest as ('
 raise notice '::: checking for existing ufid for flist %',quote_literal(flist);
 execute q1 into res;
 if res is NULL then
-	execute 'select ufid_sequence('''||ctab||''','||bfinal||')' into res;
-	--res = ufid_sequence();
+    execute 'select ufid_sequence('''||ctab||''','||bfinal||')' into res;
+    --res = ufid_sequence();
 end if;
 raise notice '::: returning %',res;
 return res;
@@ -573,23 +574,23 @@ fseq_start int := 100000000;
 BEGIN
 --contours hack 2->1
 --if layername like '%contour%' then
---	seqname := 'contour_ufid_seq';
+--  seqname := 'contour_ufid_seq';
 --end if;
 if bfinal then
-	seqname = fseq;
-	seqstart = fseq_start;
+    seqname = fseq;
+    seqstart = fseq_start;
 else
-	seqname = tseq;
-	seqstart = tseq_start;
+    seqname = tseq;
+    seqstart = tseq_start;
 end if;
 
 raise notice '::: get seq num for layer %',layername;
 begin
-	execute 'select nextval('''||seqname||''')' into res;
+    execute 'select nextval('''||seqname||''')' into res;
 exception when others then
-	raise notice '::: Exception getting sequence value %',seqname;
-	execute 'select ufid_seqinit('''||seqname||''','||seqstart||')';
-	execute 'select nextval('''||seqname||''')' into res;
+    raise notice '::: Exception getting sequence value %',seqname;
+    execute 'select ufid_seqinit('''||seqname||''','||seqstart||')';
+    execute 'select nextval('''||seqname||''')' into res;
 end;
 raise notice '::: have new seq num %',res;
 return res;
@@ -605,8 +606,8 @@ cs text;
 BEGIN
 raise notice '::: seq % start at %',seqname,startval;
 if not exists (select 0 from pg_class where relname = seqname) then 
-	execute 'create sequence '||seqname||' start '||startval; 
-	execute 'grant all on table '||seqname||' to public';
+    execute 'create sequence '||seqname||' start '||startval; 
+    execute 'grant all on table '||seqname||' to public';
 end if;
 
 END
@@ -627,9 +628,9 @@ q text;
 BEGIN
 foreach ufid in array flist
 loop
-	execute 'select ufid_components::int[] from '||layer||' where '||pkey||'='||ufid into res;
-	composite = array_cat(composite,res); 
-	--raise notice 'compo %',composite;
+    execute 'select ufid_components::int[] from '||layer||' where '||pkey||'='||ufid into res;
+    composite = array_cat(composite,res); 
+    --raise notice 'compo %',composite;
 end loop;
 
 return composite;
@@ -662,9 +663,9 @@ raise notice '::: qupd=%',qupd;
 
 execute qupd as res;
 exception when others then
-	raise notice '::: **** ASSERT - shouldnt get here *** Exception getting final sequence value %',fseq;
-	execute 'select ufid_seqinit('''||fseq||''','||fseq_start||')';
-	execute qupd as res;
+    raise notice '::: **** ASSERT - shouldnt get here *** Exception getting final sequence value %',fseq;
+    execute 'select ufid_seqinit('''||fseq||''','||fseq_start||')';
+    execute qupd as res;
 
 if exists (SELECT 0 FROM pg_class where relname = tseq) then
    execute 'alter sequence '||tseq||' restart with '||tseq_start;
@@ -793,18 +794,18 @@ coltext3 = columntext(src_table,'og.',',',array[pkey,'ogc_fid','ufid_components'
 coltext4 = columntext(src_table,'',',',array[pkey,'ogc_fid','ufid_components','wkb_geometry'],'T');
 
 if firstpass then 
-	--cori = 'create table '||dst_table||' as';
-	ufidc1 = 'array['||pkey||'] as ufid_components,';
-	ufidc2 = 'mergetab.flist as ufid_components,';
-	fluc = 'u.flist,';
+    --cori = 'create table '||dst_table||' as';
+    ufidc1 = 'array['||pkey||'] as ufid_components,';
+    ufidc2 = 'mergetab.flist as ufid_components,';
+    fluc = 'u.flist,';
 else 
-	--cori = 'insert into '||dst_table;
-	ufidc1 = 'mergetab.ufid_components::int[] as ufid_components,';
-	ufidc2 = 'assemble_ufid_components(mergetab.flist::int[],'||quote_literal(src_table)||','||quote_literal(pkey)||') as ufid_components,';
-	fluc = 'array(select distinct unnest(u.flist) order by 1) as flist,';
+    --cori = 'insert into '||dst_table;
+    ufidc1 = 'mergetab.ufid_components::int[] as ufid_components,';
+    ufidc2 = 'assemble_ufid_components(mergetab.flist::int[],'||quote_literal(src_table)||','||quote_literal(pkey)||') as ufid_components,';
+    fluc = 'array(select distinct unnest(u.flist) order by 1) as flist,';
 end if;
 
---insert non-merging features		
+--insert non-merging features       
 q4 = 'create table '||dst_table||' as'
 || ' select distinct mergetab.ogc_fid, mergetab.'||pkey||'::int,'|| coltext1 || ufidc1
 || ' mergetab.wkb_geometry::geometry'
@@ -825,28 +826,28 @@ end if;
 --
 q5 = 'insert into '||dst_table
 || ' with splitmerge as ('
-|| ' 	select ufid_generator(jointab.ufid_components,'''||original||''',False) '||pkey||',* from ('
-|| ' 		select max(mergetab.ogc_fid) as ogc_fid, ' || coltext2 || ufidc2 || op
-|| '		(array_agg(st_snaptogrid(wkb_geometry,'||quote_literal(stg_mv)||closeb||'))) as wkb_geometry' 
-|| '		from ( '
-|| ' 			select '||fluc||'o.*'
-|| ' 			from ( select unnest(flist) as unnest, flist from '||arbt||') u' 
-|| ' 			join '||quote_ident(src_table)||' o' 
-|| ' 			on u.unnest = o.'||pkey 
-|| ' 		) mergetab'
-|| ' 		group by  '||coltext2||' mergetab.flist'
-|| ' 	) jointab'
+|| '    select ufid_generator(jointab.ufid_components,'''||original||''',False) '||pkey||',* from ('
+|| '        select max(mergetab.ogc_fid) as ogc_fid, ' || coltext2 || ufidc2 || op
+|| '        (array_agg(st_snaptogrid(wkb_geometry,'||quote_literal(stg_mv)||closeb||'))) as wkb_geometry' 
+|| '        from ( '
+|| '            select '||fluc||'o.*'
+|| '            from ( select unnest(flist) as unnest, flist from '||arbt||') u' 
+|| '            join '||quote_ident(src_table)||' o' 
+|| '            on u.unnest = o.'||pkey 
+|| '        ) mergetab'
+|| '        group by  '||coltext2||' mergetab.flist'
+|| '    ) jointab'
 || ' )'
 || ' select ogc_fid,'||pkey||','||coltext4||'ufid_components, wkb_geometry from splitmerge where st_geometrytype(wkb_geometry) <> all(array[''ST_MultiLineString'',''ST_MultiPolygon''])'
 || ' union'
 || ' select og.ogc_fid,report_rbl(og.'||pkey||'::int,'||quote_literal(msg)||'::text) '||pkey||','||coltext3||'og.ufid_components,og.wkb_geometry'
 || ' from ('
-|| ' 	select distinct mergetab.ogc_fid, mergetab.'||pkey||', '|| coltext1 || ufidc1
-|| '	mergetab.wkb_geometry::geometry'
-|| ' 	from '||quote_ident(src_table)||' as mergetab'
+|| '    select distinct mergetab.ogc_fid, mergetab.'||pkey||', '|| coltext1 || ufidc1
+|| '    mergetab.wkb_geometry::geometry'
+|| '    from '||quote_ident(src_table)||' as mergetab'
 || ' ) og'
 || ' join ('
-|| ' 	select unnest(ufid_components) as '||pkey||', wkb_geometry from splitmerge where st_geometrytype(wkb_geometry) = any(array[''ST_MultiLineString'',''ST_MultiPolygon''])'
+|| '    select unnest(ufid_components) as '||pkey||', wkb_geometry from splitmerge where st_geometrytype(wkb_geometry) = any(array[''ST_MultiLineString'',''ST_MultiPolygon''])'
 || ' ) sm' 
 || ' on sm.'||pkey||' = og.'||pkey;
 
@@ -886,8 +887,8 @@ LANGUAGE plpgsql VOLATILE;
 -- Detects wheteher a particular feature has changed or not
 --$BODY$
 --DECLARe
---	q0 text;
---	res boolean;
+--  q0 text;
+--  res boolean;
 --BEGIN
 
 --q0 = 'select l1.g != l2.g from'
@@ -909,51 +910,51 @@ LANGUAGE plpgsql VOLATILE;
 -- --Temporary function to delete test tables. *Remove for production
 --$BODY$
 --DECLARE
---	res boolean;
---	q1 TEXT;
---	rc int;
---	layer character varying;
---	gtype character varying;
---	schma character varying := 'public';
---	xtabl character varying := 'spatial_ref_sys';
---	threshold int := 150000;
---	boundary text := 'cropregions';
+--  res boolean;
+--  q1 TEXT;
+--  rc int;
+--  layer character varying;
+--  gtype character varying;
+--  schma character varying := 'public';
+--  xtabl character varying := 'spatial_ref_sys';
+--  threshold int := 150000;
+--  boundary text := 'cropregions';
 --BEGIN
---	q1 = 'select tablename'
---	|| ' from pg_tables'
---	|| ' where schemaname = '||quote_literal(schma)
---	--|| ' and tablename like '||quote_literal('%_poly')
---	--|| ' and not tablename like '||quote_literal('new_%')||' and not tablename like '||quote_literal('northisland%')|| ' and not tablename like '||quote_literal('southisland%')|| ' and not tablename like '||quote_literal('reblocklist%')|| ' and not tablename like '||quote_literal('aggregatedreblocklist%')
---	|| ' and not tablename like ''spatial_ref_sys'' and not tablename like ''cropregions'''
---	|| ' order by tablename';
---	for layer in execute q1
---	loop
---		--execute 'select GeometryType(wkb_geometry::geometry) from '||quote_ident(layer) into gtype;
---		--if gtype in ('POLYGON','MULTIPOLYGON') then
---		raise notice 'Removing Temporary tables for Layer %. %',layer,clock_timestamp();
+--  q1 = 'select tablename'
+--  || ' from pg_tables'
+--  || ' where schemaname = '||quote_literal(schma)
+--  --|| ' and tablename like '||quote_literal('%_poly')
+--  --|| ' and not tablename like '||quote_literal('new_%')||' and not tablename like '||quote_literal('northisland%')|| ' and not tablename like '||quote_literal('southisland%')|| ' and not tablename like '||quote_literal('reblocklist%')|| ' and not tablename like '||quote_literal('aggregatedreblocklist%')
+--  || ' and not tablename like ''spatial_ref_sys'' and not tablename like ''cropregions'''
+--  || ' order by tablename';
+--  for layer in execute q1
+--  loop
+--      --execute 'select GeometryType(wkb_geometry::geometry) from '||quote_ident(layer) into gtype;
+--      --if gtype in ('POLYGON','MULTIPOLYGON') then
+--      raise notice 'Removing Temporary tables for Layer %. %',layer,clock_timestamp();
 
---		execute 'drop table if exists reblocklist_northisland_northsouth_'||quote_ident(layer);
---		execute 'drop table if exists reblocklist_northisland_eastwest_'||quote_ident(layer);
---		execute 'drop table if exists reblocklist_southisland_northsouth_'||quote_ident(layer);
---		execute 'drop table if exists reblocklist_southisland_eastwest_'||quote_ident(layer);
+--      execute 'drop table if exists reblocklist_northisland_northsouth_'||quote_ident(layer);
+--      execute 'drop table if exists reblocklist_northisland_eastwest_'||quote_ident(layer);
+--      execute 'drop table if exists reblocklist_southisland_northsouth_'||quote_ident(layer);
+--      execute 'drop table if exists reblocklist_southisland_eastwest_'||quote_ident(layer);
 
---		execute 'drop table if exists aggregatedreblocklist_northisland_northsouth_'||quote_ident(layer);
---		execute 'drop table if exists aggregatedreblocklist_northisland_eastwest_'||quote_ident(layer);
---		execute 'drop table if exists aggregatedreblocklist_southisland_northsouth_'||quote_ident(layer);
---		execute 'drop table if exists aggregatedreblocklist_southisland_eastwest_'||quote_ident(layer);
+--      execute 'drop table if exists aggregatedreblocklist_northisland_northsouth_'||quote_ident(layer);
+--      execute 'drop table if exists aggregatedreblocklist_northisland_eastwest_'||quote_ident(layer);
+--      execute 'drop table if exists aggregatedreblocklist_southisland_northsouth_'||quote_ident(layer);
+--      execute 'drop table if exists aggregatedreblocklist_southisland_eastwest_'||quote_ident(layer);
 
---		execute 'drop table if exists northisland_northsouth_'||quote_ident(layer);
---		execute 'drop table if exists northisland_eastwest_'||quote_ident(layer);
---		execute 'drop table if exists southisland_northsouth_'||quote_ident(layer);
---		execute 'drop table if exists southisland_eastwest_'||quote_ident(layer);
+--      execute 'drop table if exists northisland_northsouth_'||quote_ident(layer);
+--      execute 'drop table if exists northisland_eastwest_'||quote_ident(layer);
+--      execute 'drop table if exists southisland_northsouth_'||quote_ident(layer);
+--      execute 'drop table if exists southisland_eastwest_'||quote_ident(layer);
 
---		execute 'drop table if exists new_'||quote_ident(layer);
---		--execute 'drop table if exists '||quote_ident(layer);
---		--execute 'truncate table rbl_associations';
+--      execute 'drop table if exists new_'||quote_ident(layer);
+--      --execute 'drop table if exists '||quote_ident(layer);
+--      --execute 'truncate table rbl_associations';
 
---		--end if;
---	end loop;
---	raise notice 'Reblock Cleaning Complete. %',clock_timestamp();
+--      --end if;
+--  end loop;
+--  raise notice 'Reblock Cleaning Complete. %',clock_timestamp();
 --RETURN True;
 --END
 --$BODY$
@@ -981,24 +982,24 @@ LANGUAGE plpgsql VOLATILE;
 
 -- select ymx,ymn,xmx,xmn 
 -- from (
--- 	select 
--- 		st_ymax(ex) ymx,
--- 		st_ymin(ex) ymn,
--- 		st_xmax(ex) xmx,
--- 		st_xmin(ex) xmn 
--- 	from (select st_extent(shape) ex from test) extnt
+--  select 
+--      st_ymax(ex) ymx,
+--      st_ymin(ex) ymn,
+--      st_xmax(ex) xmx,
+--      st_xmin(ex) xmn 
+--  from (select st_extent(shape) ex from test) extnt
 -- ) coords
 -- where
 -- array[5862000,2092000,1144000,1844000,1868000,1436000,5598000,5034000,5826000,5790000,
--- 	1484000,1500000,5106000,5826000,5973000,1748000,4722000,1620000,4740000,5502000,
--- 	1084000,2084000,5670000,1528000,1116000,1940000,1916000,6114000,1092000,5598000,
--- 	4842000,6198000,1892000,5682000,5070000,5502000,6198000,1940000,6006000,5142000,
--- 	1604000,6114000,5178000,1580000,1868000,1620000,1524000,4878000,1504000,1940000,
--- 	5937000,5538000,2092000,1740000,1764000,1460000,1964000,1980000,1892000,1700000,
--- 	5826000,5214000,5718000,5790000,5466000,1644000,5562000,6198000,2036000,5178000,
--- 	6150000,1716000,4776000,5466000,1844000,1868000,2060000,5502000,5142000,1772000,
--- 	1120000,1740000,1508000,1916000,1084000,6042000,6150000,5430000,1844000,1596000,
--- 	5634000,5538000,1956000,1676000,1868000,5634000,1964000,6234000,2012000
+--  1484000,1500000,5106000,5826000,5973000,1748000,4722000,1620000,4740000,5502000,
+--  1084000,2084000,5670000,1528000,1116000,1940000,1916000,6114000,1092000,5598000,
+--  4842000,6198000,1892000,5682000,5070000,5502000,6198000,1940000,6006000,5142000,
+--  1604000,6114000,5178000,1580000,1868000,1620000,1524000,4878000,1504000,1940000,
+--  5937000,5538000,2092000,1740000,1764000,1460000,1964000,1980000,1892000,1700000,
+--  5826000,5214000,5718000,5790000,5466000,1644000,5562000,6198000,2036000,5178000,
+--  6150000,1716000,4776000,5466000,1844000,1868000,2060000,5502000,5142000,1772000,
+--  1120000,1740000,1508000,1916000,1084000,6042000,6150000,5430000,1844000,1596000,
+--  5634000,5538000,1956000,1676000,1868000,5634000,1964000,6234000,2012000
 -- ] && array[ymx::int,ymn::int,xmx::int,xmn::int]
 
 -- ----------------------------------------------------------------------------------------------------------------------

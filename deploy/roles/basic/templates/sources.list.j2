@@ -1,0 +1,13 @@
+### AUTOMATIC MIRROR SELECTION
+# doesn't play nicely with corporate proxies and Apt-Proxy cache
+# deb mirror://mirrors.ubuntu.com/mirrors.txt {{ ansible_distribution_release }} main restricted universe multiverse
+# deb mirror://mirrors.ubuntu.com/mirrors.txt {{ ansible_distribution_release }}-updates main restricted universe multiverse
+# deb mirror://mirrors.ubuntu.com/mirrors.txt {{ ansible_distribution_release }}-backports main restricted universe multiverse
+# deb mirror://mirrors.ubuntu.com/mirrors.txt {{ ansible_distribution_release }}-security main restricted universe multiverse
+
+
+### MANUAL MIRROR SELECTION
+deb {{ repository_mirror }} {{ ansible_distribution_release }} main restricted universe multiverse
+deb {{ repository_mirror }} {{ ansible_distribution_release }}-updates main restricted universe multiverse
+deb {{ repository_mirror }} {{ ansible_distribution_release }}-backports main restricted universe multiverse
+deb {{ repository_mirror }} {{ ansible_distribution_release }}-security main restricted universe multiverse

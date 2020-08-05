@@ -1,0 +1,52 @@
+---
+
+################################################################################
+#
+# Copyright 2013 Crown copyright (c)
+# Land Information New Zealand and the New Zealand Government.
+# All rights reserved
+#
+# This program is released under the terms of the new BSD license. See the
+# LICENSE file for more information.
+#
+################################################################################
+
+- name: Install packages
+  apt:
+    pkg: "{{ item }}"
+    force: yes
+    install_recommends: no
+    state: latest
+  with_items:
+    - python-psycopg2
+    - postgresql-{{ DB_PSQL_VERSION }}
+    - postgresql-contrib-{{ DB_PSQL_VERSION }}
+    - postgresql-{{ DB_PSQL_VERSION }}-postgis-{{ DB_PGIS_VERSION }}
+    - postgresql-{{ DB_PSQL_VERSION }}-postgis-{{ DB_PGIS_VERSION }}-scripts
+  environment: "{{ apt_proxy }}"
+  become: yes
+
+- name: Install PostgreSQL DBPatch extension
+  apt:
+    pkg: "{{ item }}"
+    force: yes
+    install_recommends: no
+    state: latest
+  with_items:
+    - postgresql-{{ DB_PSQL_VERSION }}-dbpatch
+  environment: "{{ apt_proxy }}"
+  become: yes
+  when: DB_EXTENSION_DBPATCH
+
+- name: Install PostgreSQL table_version extension
+  apt:
+    pkg: "{{ item }}"
+    force: yes
+    install_recommends: no
+    state: latest
+  with_items:
+    - postgresql-{{ DB_PSQL_VERSION }}-tableversion
+  environment: "{{ apt_proxy }}"
+  become: yes
+  when: DB_EXTENSION_TABLE_VERSION
+

@@ -92,6 +92,7 @@ DECLARE
     usepkey text;
     
     changeset text[];
+
 BEGIN
     execute 'select rbl_init('||quote_literal(atab)||','||quote_literal(rtab)||')';
     ------------------------------------------------------------------------

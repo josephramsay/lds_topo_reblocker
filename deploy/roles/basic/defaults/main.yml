@@ -1,0 +1,17 @@
+---
+
+# Network device used for communication between servers in cluster.
+#SYSTEM_NETWORK_DEVICE: #eth1/enp0s3
+
+# World time zone. For list of time zones see:
+# http://en.wikipedia.org/wiki/List_of_tz_database_time_zones.
+SYSTEM_TIMEZONE: Pacific/Auckland
+
+# Determines if system upgrade (apt-get upgrade) will be performed before
+# deployment.
+# Supported values:
+# * yes: execute system upgrade
+# * no: don't execute system upgrade
+SYSTEM_UPGRADE: no
+
+

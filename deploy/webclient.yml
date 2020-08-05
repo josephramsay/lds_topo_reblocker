@@ -1,0 +1,13 @@
+---
+
+- hosts: all
+  name: Gather facts from other servers
+  tasks: [ ]
+
+- hosts: "{{ HOST_NAME }}"
+  roles:
+    - {
+        role: webclient,
+        tags: ['webclient']
+    }
+

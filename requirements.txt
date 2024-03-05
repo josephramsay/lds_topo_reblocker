@@ -1,7 +1,7 @@
 psycopg2==2.6.2
-Twisted==20.3.0
+Twisted==22.10.0
 pycrypto==2.6.1
 koordinates==0.2.0
-PyYAML==5.1
 lxml==4.9.1
+PyYAML==5.4
 pysmbc==1.0.15.6

@@ -38,7 +38,7 @@ LANGUAGE plpgsql VOLATILE;
 CREATE OR REPLACE FUNCTION ufid_column_identifier(qtab text) RETURNS text AS
 -- Attempts to guess the name of the primary-key/ufid column (if this is not provided)
 $BODY$
-DECLARE 
+DECLARE
     colname text;
     q1 text;
     res text;
@@ -51,14 +51,14 @@ BEGIN
     for colname in execute q1
     loop
         q1 = 'select max(count) from (select count(*),'||colname||' from '||qtab||' group by '||colname||') a';
-        
+
         execute q1 into res;
         if res='1' then
             raise notice'UFID DETECT %',colname;
             return colname;
         end if;
     end loop;
-    
+
 return 'ufid';
 END
 $BODY$
@@ -90,17 +90,17 @@ DECLARE
     join_func_line text := 'st_linemerge(st_collect';
     qs text := '';
     usepkey text;
-    
+
     changeset text[];
 
 BEGIN
     execute 'select rbl_init('||quote_literal(atab)||','||quote_literal(rtab)||')';
     ------------------------------------------------------------------------
-    
+
     if array_length(filter,1)>0 then
         qs = ' and tablename = any('||quote_literal(filter)||')';
     end if;
-    
+
     q1 = 'select tablename'
     || ' from pg_tables'
     || ' where schemaname = '||quote_literal(schma)
@@ -121,16 +121,27 @@ BEGIN
         else
             usepkey = pkey;
         end if;
-        
+
         raise notice 'Reblocking Layer %/%. %',layer,usepkey,clock_timestamp();
         execute 'select GeometryType(wkb_geometry::geometry) from '||quote_ident(layer) into gtype;
-        
+        execute 'select DISTINCT ST_SRID(wkb_geometry) from '||quote_ident(layer) into defsrid;
+
         if gtype in ('POLYGON','MULTIPOLYGON') then
+            raise notice 'gtype of layer is polygon';
+            raise notice 'running reblockersplitter on that layer...';
             res = reblocksplitter(layer, prefix, usepkey, boundary, join_func_poly,True);
         elsif gtype in ('LINESTRING','MULTILINESTRING') then
+            raise notice 'gtype of layer is of linestring';
+            raise notice 'running reblockersplitter on that layer...';
             res = reblocksplitter(layer, prefix, usepkey, boundary, join_func_line,False);
         end if;
+
+        layer_new = 'new_'||layer;
+        --Table altered here to fix issue after upgrade to PG16 and invalid geom type and srid being written to db.
+        execute format('ALTER TABLE %s ALTER Column wkb_geometry type geometry(%s, %s)', layer_new, gtype, defsrid);
     end loop;
+
+
     raise notice 'Reblocking Complete. %',clock_timestamp();
 RETURN True;
 END
@@ -173,8 +184,8 @@ loop
     raise notice '### Merge EastWest borders for region=% on layer=%',region,newtable1;
     res = reblockfaster(original,newtable1,pkey,op,touch,boundary,region,newtable2,False);
 
-    fstr = fstr || delim ||' select * from '||quote_ident(newtable2); 
-    dstr = dstr || 'drop table '||quote_ident(newtable1)||';drop table '||quote_ident(newtable2)||';'; 
+    fstr = fstr || delim ||' select * from '||quote_ident(newtable2);
+    dstr = dstr || 'drop table '||quote_ident(newtable1)||';drop table '||quote_ident(newtable2)||';';
     delim = ' union ';
 end loop;
 
@@ -203,13 +214,13 @@ LANGUAGE plpgsql VOLATILE;
 CREATE OR REPLACE FUNCTION columntext(layer text, prefix text, delim text, omissions text[],torl text) RETURNS character varying AS
 -- Build a delimited list of column names
 $BODY$
-DECLARE 
+DECLARE
 cstr TEXT;
 BEGIN
 --TODO filter on schema else duplicate table names in diff schems cause multiple dup cols
 cstr = array_to_string(array(select ' '||prefix||c.column_name||' '
         from information_schema.columns as c
-            where table_name = layer 
+            where table_name = layer
             and not c.column_name = any (omissions)
             order by c.ordinal_position
     ),delim);
@@ -242,8 +253,8 @@ create or replace function array_rbl_compress(anyarray) returns anyarray as
 LANGUAGE SQL IMMUTABLE;
 
 create or replace function array_rbl_concat(anyarray,anyarray) returns anyarray as
---'select array_cat($1,$2) where $1&&$2 or array_length($1,1)=0 or array_length($2,1)=0' 
-'select array_cat($1,$2)' 
+--'select array_cat($1,$2) where $1&&$2 or array_length($1,1)=0 or array_length($2,1)=0'
+'select array_cat($1,$2)'
 LANGUAGE SQL IMMUTABLE;
 
 drop aggregate if exists array_rbl_agg(anyarray);
@@ -266,7 +277,7 @@ minx int := 131;
 maxx int := 172;
 cnst numeric = 6000;
 step numeric := 36000;
---extra_ns numeric[] := array[5140000,5104000]; 
+--extra_ns numeric[] := array[5140000,5104000];
 d numeric;
 m numeric;
 BEGIN
@@ -285,7 +296,7 @@ minx int := 45;
 maxx int := 87;
 cnst numeric = 4000;
 step numeric := 24000;
---extra_ew numeric[] := array[3482000,3506000]; 
+--extra_ew numeric[] := array[3482000,3506000];
 d numeric;
 m numeric;
 BEGIN
@@ -302,7 +313,7 @@ CREATE OR REPLACE FUNCTION nonstandard(cc numeric) RETURNS boolean AS
 $BODY$
 DECLARE
 res boolean;
-nsmsb text := 
+nsmsb text :=
    '5862000,2092000,1144000,1844000,1868000,1436000,5598000,5034000,5826000,5790000,
     1484000,1500000,5106000,5826000,5973000,1748000,4722000,1620000,4740000,5502000,
     1084000,2084000,5670000,1528000,1116000,1940000,1916000,6114000,1092000,5598000,
@@ -355,11 +366,11 @@ roundval int;
 
 BEGIN
 
-if firstpass then 
+if firstpass then
     nsewbound = nsbound;
     --nsewfilter = nsfilter;
     nsewfilter = nsfilter||' or '||nsxxfilt;
-else 
+else
     nsewbound = ewbound;
     --nsewfilter = ewfilter;
     nsewfilter = ewfilter||' or '||ewxxfilt;
@@ -377,7 +388,7 @@ else
     roundval = 2;
 end if;
 
--- DOC 
+-- DOC
 -- 1. divide features between NI and SI (bound)
 -- 2. round edge points so they match boundry lines (exvals)
 -- 3. determine whether edge points touch mapsheet boundaries (msfilter)
@@ -390,34 +401,34 @@ execute 'drop table if exists '||rbl as res;
 qstr = 'create temporary table '||rbl||' as'
 || ' with bound as ('
 || '    select  '||coltext||snapgrid||' as stg_geometry,'
-|| '    st_extent('||snapgrid||') as ex'    
+|| '    st_extent('||snapgrid||') as ex'
 || '    from '||quote_ident(layer)||' p'
 || '    join '||quote_ident(bndry)||' cr '
-|| '    on cr.region='||quote_literal(region)   
+|| '    on cr.region='||quote_literal(region)
 || '    and st_intersects(p.wkb_geometry,cr.wkb_geometry::geometry)'
-|| '    group by '||coltext||'stg_geometry' 
+|| '    group by '||coltext||'stg_geometry'
 || ' ), exvals as ('
 || '    select  '||coltext
 || '    p.stg_geometry,'
 || '    round(st_ymax(p.stg_geometry)::numeric,'||roundval||') as Nv,'
-|| '    round(st_ymin(p.stg_geometry)::numeric,'||roundval||') as Sv,'  
+|| '    round(st_ymin(p.stg_geometry)::numeric,'||roundval||') as Sv,'
 || '    round(st_xmax(p.stg_geometry)::numeric,'||roundval||') as Ev,'
 || '    round(st_xmin(p.stg_geometry)::numeric,'||roundval||') as Wv'
 || '    from bound p '
-|| ' ), msfilter as ('  
-|| '    select '||coltext||'p.stg_geometry,p.Nv,p.Sv,p.Ev,p.Wv,' 
-|| '    mod(p.Nv::numeric,'||quote_literal(map_sheet_ident)||')=0 as N,' 
-|| '    mod(p.Sv::numeric,'||quote_literal(map_sheet_ident)||')=0 as S,'    
-|| '    mod(p.Ev::numeric,'||quote_literal(map_sheet_ident)||')=0 as E,' 
+|| ' ), msfilter as ('
+|| '    select '||coltext||'p.stg_geometry,p.Nv,p.Sv,p.Ev,p.Wv,'
+|| '    mod(p.Nv::numeric,'||quote_literal(map_sheet_ident)||')=0 as N,'
+|| '    mod(p.Sv::numeric,'||quote_literal(map_sheet_ident)||')=0 as S,'
+|| '    mod(p.Ev::numeric,'||quote_literal(map_sheet_ident)||')=0 as E,'
 || '    mod(p.Wv::numeric,'||quote_literal(map_sheet_ident)||')=0 as W'
 || '    from exvals p'
 || ' ), srcpoly as ('
-|| '    select * from msfilter'     
+|| '    select * from msfilter'
 || '    where '||nsewfilter
-|| ' ), linked as (' 
-|| '    select t1.'||pkey||' as merge_id, t2.'||pkey||' as drop_id'  
+|| ' ), linked as ('
+|| '    select t1.'||pkey||' as merge_id, t2.'||pkey||' as drop_id'
 || '    from srcpoly as t1, srcpoly as t2'
-|| '    where t1.'||pkey||'>t2.'||pkey  
+|| '    where t1.'||pkey||'>t2.'||pkey
 || '    and '||noidgeo||nsewbound
 || '    and st_relate(t1.stg_geometry,t2.stg_geometry,'||quote_literal(msbndry)||')'
 || ' ) select merge_id::int, drop_id::int from linked order by merge_id asc, drop_id asc';
@@ -459,13 +470,13 @@ qstr = 'create temporary table '||arbl||' as'
 || ' with recursive innerrbl as ('
 || '    select array[merge_id,drop_id] ab, 0::int u from '||rbl
 || ' union'
-|| '    select array_rbl_agg(aab.ab) x,aub.ab u' 
+|| '    select array_rbl_agg(aab.ab) x,aub.ab u'
 || '    from ('
 || '        select ab from innerrbl'
-|| '    ) aab,' 
+|| '    ) aab,'
 || '    ('
 || '        select distinct ab from (select merge_id ab from '||rbl||' union select drop_id ab from '||rbl||') r2'
-|| '    ) aub' 
+|| '    ) aub'
 || '    where aub.ab = any(aab.ab) group by aub.ab'
 || ' ),'
 || ' outerrbl as ('
@@ -539,7 +550,7 @@ q1 = 'with latest as ('
 || ' on l.mts = ta.ts'
 || ' where ufid_components::int[]='||quote_literal(flist)||'::int[]'
 || ' limit 1';
--- limit added to prevent multiplie ufid being returned for identical timestamps 
+-- limit added to prevent multiplie ufid being returned for identical timestamps
 --|| ' and layer like '''||quote_ident(ctab)||'''';
 
 raise notice '::: checking for existing ufid for flist %',quote_literal(flist);
@@ -597,7 +608,7 @@ return res;
 END
 $BODY$
 LANGUAGE plpgsql VOLATILE;
--- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- 
+-- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
 CREATE OR REPLACE FUNCTION ufid_seqinit(seqname text, startval int) returns void as
 $BODY$
 declare
@@ -605,8 +616,8 @@ cs text;
 
 BEGIN
 raise notice '::: seq % start at %',seqname,startval;
-if not exists (select 0 from pg_class where relname = seqname) then 
-    execute 'create sequence '||seqname||' start '||startval; 
+if not exists (select 0 from pg_class where relname = seqname) then
+    execute 'create sequence '||seqname||' start '||startval;
     execute 'grant all on table '||seqname||' to public';
 end if;
 
@@ -620,16 +631,16 @@ LANGUAGE plpgsql VOLATILE;
 CREATE OR REPLACE FUNCTION assemble_ufid_components(flist int[],layer character varying,pkey text) RETURNS int[] AS
 -- Append UFID's together
 $BODY$
-DECLARE 
+DECLARE
 ufid int;
 composite int[] := array[]::int[];
 res int[];
-q text; 
+q text;
 BEGIN
 foreach ufid in array flist
 loop
     execute 'select ufid_components::int[] from '||layer||' where '||pkey||'='||ufid into res;
-    composite = array_cat(composite,res); 
+    composite = array_cat(composite,res);
     --raise notice 'compo %',composite;
 end loop;
 
@@ -733,7 +744,7 @@ LANGUAGE plpgsql VOLATILE;
 -- firstpass = flag to indicate new table creation or array initialisation
 
 CREATE OR REPLACE FUNCTION reblockfaster(original text,src_table text,pkey text,op text,touch boolean,bndry text, region text,dst_table text,firstpass boolean) RETURNS boolean AS
--- work function that does the physical reblocking, merging cross sheet blocks and unioning with unaffected featured 
+-- work function that does the physical reblocking, merging cross sheet blocks and unioning with unaffected featured
 $BODY$
 DECLARE
 res character varying;
@@ -793,19 +804,19 @@ coltext2 = columntext(src_table,'mergetab.',',',array[pkey,'ogc_fid','ufid_compo
 coltext3 = columntext(src_table,'og.',',',array[pkey,'ogc_fid','ufid_components','wkb_geometry'],'T');
 coltext4 = columntext(src_table,'',',',array[pkey,'ogc_fid','ufid_components','wkb_geometry'],'T');
 
-if firstpass then 
+if firstpass then
     --cori = 'create table '||dst_table||' as';
     ufidc1 = 'array['||pkey||'] as ufid_components,';
     ufidc2 = 'mergetab.flist as ufid_components,';
     fluc = 'u.flist,';
-else 
+else
     --cori = 'insert into '||dst_table;
     ufidc1 = 'mergetab.ufid_components::int[] as ufid_components,';
     ufidc2 = 'assemble_ufid_components(mergetab.flist::int[],'||quote_literal(src_table)||','||quote_literal(pkey)||') as ufid_components,';
     fluc = 'array(select distinct unnest(u.flist) order by 1) as flist,';
 end if;
 
---insert non-merging features       
+--insert non-merging features
 q4 = 'create table '||dst_table||' as'
 || ' select distinct mergetab.ogc_fid, mergetab.'||pkey||'::int,'|| coltext1 || ufidc1
 || ' mergetab.wkb_geometry::geometry'
@@ -819,7 +830,7 @@ execute q4 as res;
 
 if position('(' in op)>0 then closeb = ')';
 else closeb = '';
-end if; 
+end if;
 
 --merge and insert features
 -- HACK. Outer select checks for MLS to prevent merge until loop/3pt fixed in data
@@ -828,12 +839,12 @@ q5 = 'insert into '||dst_table
 || ' with splitmerge as ('
 || '    select ufid_generator(jointab.ufid_components,'''||original||''',False) '||pkey||',* from ('
 || '        select max(mergetab.ogc_fid) as ogc_fid, ' || coltext2 || ufidc2 || op
-|| '        (array_agg(st_snaptogrid(wkb_geometry,'||quote_literal(stg_mv)||closeb||'))) as wkb_geometry' 
+|| '        (array_agg(st_snaptogrid(wkb_geometry,'||quote_literal(stg_mv)||closeb||'))) as wkb_geometry'
 || '        from ( '
 || '            select '||fluc||'o.*'
-|| '            from ( select unnest(flist) as unnest, flist from '||arbt||') u' 
-|| '            join '||quote_ident(src_table)||' o' 
-|| '            on u.unnest = o.'||pkey 
+|| '            from ( select unnest(flist) as unnest, flist from '||arbt||') u'
+|| '            join '||quote_ident(src_table)||' o'
+|| '            on u.unnest = o.'||pkey
 || '        ) mergetab'
 || '        group by  '||coltext2||' mergetab.flist'
 || '    ) jointab'
@@ -848,7 +859,7 @@ q5 = 'insert into '||dst_table
 || ' ) og'
 || ' join ('
 || '    select unnest(ufid_components) as '||pkey||', wkb_geometry from splitmerge where st_geometrytype(wkb_geometry) = any(array[''ST_MultiLineString'',''ST_MultiPolygon''])'
-|| ' ) sm' 
+|| ' ) sm'
 || ' on sm.'||pkey||' = og.'||pkey;
 
 
@@ -873,7 +884,7 @@ LANGUAGE plpgsql VOLATILE;
 -- ---------------------------------------------------------------------------
 
 --CREATE OR REPLACE FUNCTION triple_bypass(geometry) RETURNS geometry AS
-        -- Strips one of 3x duplicate coordinates from MLS. This is VERY slow 
+        -- Strips one of 3x duplicate coordinates from MLS. This is VERY slow
 --'select ST_LineMerge(ST_GeomFromText(regexp_replace(regexp_replace(ST_AsText($1),(regexp_matches(ST_AsText($1),''(\d+\.*\d*\s\d+\.*\d*).+\1.+\1'',''g''))[1]||'','',''''),'',\)'','')'')));'
 --LANGUAGE sql VOLATILE;
 
@@ -965,28 +976,28 @@ LANGUAGE plpgsql VOLATILE;
 -- UTILITY QUERIES
 -- ----------------------------------------------------------------------------------------------------------------------
 
--- with 
--- a as (select sheet_code sc,st_extent(wkb_geometry) e from nz_topo_50_map_sheets group by sheet_code), 
+-- with
+-- a as (select sheet_code sc,st_extent(wkb_geometry) e from nz_topo_50_map_sheets group by sheet_code),
 -- b as (select sc,st_ymax(e) n,st_ymin(e) s,st_xmax(e) e,st_xmin(e) w from a),
 -- c as (
--- select 'NS' c,sc,n from b where not northsouth(n::numeric) 
+-- select 'NS' c,sc,n from b where not northsouth(n::numeric)
 -- union
 -- select 'NS' c,sc,s from b where not northsouth(s::numeric)
--- union 
--- select 'EW' c,sc,e from b where not eastwest(e::numeric) 
 -- union
--- select 'EW' c,sc,w from b where not eastwest(w::numeric) 
+-- select 'EW' c,sc,e from b where not eastwest(e::numeric)
+-- union
+-- select 'EW' c,sc,w from b where not eastwest(w::numeric)
 -- )
--- select array_agg(n) from c 
+-- select array_agg(n) from c
 
 
--- select ymx,ymn,xmx,xmn 
+-- select ymx,ymn,xmx,xmn
 -- from (
---  select 
+--  select
 --      st_ymax(ex) ymx,
 --      st_ymin(ex) ymn,
 --      st_xmax(ex) xmx,
---      st_xmin(ex) xmn 
+--      st_xmin(ex) xmn
 --  from (select st_extent(shape) ex from test) extnt
 -- ) coords
 -- where

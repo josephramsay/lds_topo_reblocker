@@ -8,7 +8,7 @@ usage: python LayerReader [-h|--help]|[-c|--cropregion][-i|--import][-e|--export
             [-u|--ufid <primary-key>][-m|--merge <primary-key>][-w|--webservice][-v|--version]
             [-x/-excise][-y/--deepexcise][-r/--release][-z/--linkrelease]
 -h/--help : Print out this help message
--c/--cropregion : Reload auxilliary map files 
+-c/--cropregion : Reload auxilliary map files
     i.e. CropRegions to subdivide area and utilise less memory when processing
 -i/--import : Run Shape to PostgreSQL Only
 -e/--export : Run PostgreSQL to Shape Only
@@ -17,7 +17,7 @@ usage: python LayerReader [-h|--help]|[-c|--cropregion][-i|--import][-e|--export
 -s/--selection : Only process and export layers found in the import directory
 -d/--dir <path> : Specifiy a shapefile import directory
 -l/--layer <layer> : Specify a single layer to import/process/export
--u/--ufid <ufid> : Specify the name of the primary key field for a layer/set-of-layers 
+-u/--ufid <ufid> : Specify the name of the primary key field for a layer/set-of-layers
     e.g. t50_fid/t250_fid
 -m/--merge <ufid> : Returns the layers using this composite ID and its components
 -w/--webservice : Enable Webservice lookup for missing EPSG
@@ -50,19 +50,11 @@ import abc
 ABC = abc.ABCMeta('ABC', (object,), {'__slots__': ()})
 abstractmethod = abc.abstractmethod
 
-#PYVER3 = sys.version_info > (3,)
-#2 to 3 imports
-#if PYVER3:
-#    import urllib.request as ulib
-#    from urllib.error import HTTPError
-#else:
-#    import urllib2 as ulib
-#    from urllib2 import HTTPError
-
 try:
     import ogr, osr, gdal
 except ImportError as iee:
-    print(iee)
+    print("Import error: ", iee)
+    print("Attempting to import OGR using osgeo...")
     from osgeo import ogr, osr, gdal
 
 OVERWRITE = False
@@ -104,7 +96,7 @@ class GdalErrorHandler(object):
         self.err_no = err_no
         self.err_msg = GEH_MARKER+' Error Handler '+err_msg
         if err_level>0:
-            #The exception here won't be caught since this runs in a separate thread 
+            #The exception here won't be caught since this runs in a separate thread
             #but the stdout print will if we redirect and capture
             print(self.err_msg)
             #raise GdalException(self.err_msg)
@@ -112,10 +104,10 @@ class GdalErrorHandler(object):
 def clearGdalExceptions(): gdal.DontUseExceptions()
 def setGdalException(e=True):
     old = gdal.GetUseExceptions()
-    if e: 
+    if e:
         gdal.PushErrorHandler(GdalErrorHandler().handler)
         gdal.UseExceptions()
-    else: 
+    else:
         gdal.DontUseExceptions()
         gdal.PopErrorHandler()
     return old==1
@@ -130,10 +122,10 @@ def captureGdalError(func):
             err = sys.stderr.getvalue()
             out = sys.stdout.getvalue()
             #if something is in stderr raise
-            if err: 
+            if err:
                 raise GdalStderrCaptureException('ERROR '+err)
             #if something is in stdout check that is been marked as an error then raise
-            if out and out.startswith(GEH_MARKER): 
+            if out and out.startswith(GEH_MARKER):
                 raise GdalStdoutCaptureException('OUTPUT '+out)
         except RuntimeError as rune:
             raise GdalStderrCaptureException('Caught GDAL runtime error'+rune)
@@ -213,11 +205,19 @@ class LayerReader(object):
         elements = "array['{0}']".format("','".join(l)) if l else "array['']"
 
         qstr = "select reblockall('{0}',{1},{2})".format(ufid,elements,o)
+        print("Running this stored function reblockall() query: ", qstr)
 
         self.dst.connect()
-        self.dst.execute(qstr)
+        try:
+            self.dst.execute(qstr)
+            # for notice in self._dst.notices:
+            #      print(notice)
+        except Exception as e:
+            print(e)
+            raise
+
         self.dst.disconnect()
-    
+
     def _readdir(self,spath):
         return [fp for fp in os.listdir(spath) if re.search('.shp$',fp)]
 
@@ -233,13 +233,13 @@ class _DS(ABC):
 
     OGR_DS_PREFS = ["OVERWRITE=NO","GEOM_TYPE=geometry","ENCODING=UTF-8"]
     OGR_LAYER_PREFS = OGR_DS_PREFS
-    
+
     def __init__(self):
         self.driver = ogr.GetDriverByName(self.DRIVER_NAME)
-        
+
     def __enter__(self):
         return self
-    
+
     def __exit__(self, type, value, traceback):
         for dsn in self.dsl:
             #print 'releasing',dsn
@@ -247,10 +247,10 @@ class _DS(ABC):
             self.dsl[dsn] = None
         self.dsl = None
         self.driver = None
-        
+
     def _getdsprefs(self):
         return self.OGR_DS_PREFS
-        
+
     def _getlayerprefs(self):
         return self.OGR_LAYER_PREFS
 
@@ -262,7 +262,7 @@ class _DS(ABC):
         old = self.OGR_DS_PREFS[0]
         self.OGR_DS_PREFS[0] = 'OVERWRITE={}'.format('YES' if o else 'NO')
         return old=='OVERWRITE=YES'
-        
+
     def _findSRID(self,name,sr,useweb):
         '''https://stackoverflow.com/a/10807867'''
         res = sr.AutoIdentifyEPSG()
@@ -271,17 +271,17 @@ class _DS(ABC):
         elif useweb:
             res = self._lookupSRID(sr.ExportToWkt())
             if res: return res
-        print ('Warning. Layer {0} using DEF_SRS {1}'.format(name,DEF_SRS))    
+        print ('Warning. Layer {0} using DEF_SRS {1}'.format(name,DEF_SRS))
         return DEF_SRS
 
-    def _lookupSRID(self,wkt): 
+    def _lookupSRID(self,wkt):
         uu='http://prj2epsg.org/search.json?mode=wkt&terms='
 
         purl='127.0.0.1:3128'
         pscheme="http"
-        
+
         uuwkt = uu + ulib.parse.quote(wkt)
-        
+
         handlers = [
                 ulib.request.HTTPHandler(),
                 ulib.request.HTTPSHandler(),
@@ -289,14 +289,14 @@ class _DS(ABC):
             ]
         opener = ulib.request.build_opener(*handlers)
         ulib.request.install_opener(opener)
-        
+
         try:
             res = ulib.request.urlopen(uuwkt)
             return int(json.loads(res.read())['codes'][0]['code'])
         except ulib.error.HTTPError as he:
             print ('SRS WS Convert Error {0}'.format(he))
-        
-    
+
+
     def initalise(self,dsn=None,create=True):
         ds = None
         try:
@@ -310,7 +310,7 @@ class _DS(ABC):
             if re.search('HTTP error code : 404',str(re1)):
                 return None
 
-            if self.CREATE: 
+            if self.CREATE:
                 try:
                     ds = self.create(dsn)
                 except RuntimeError as re2:
@@ -325,10 +325,10 @@ class _DS(ABC):
 
     @abstractmethod
     def connect(self): pass
-    
+
     @abstractmethod
     def disconnect(self): pass
-    
+
     @abstractmethod
     def execute(self,qstr,results=True): pass
 
@@ -337,7 +337,7 @@ class _DS(ABC):
 
     @abstractmethod
     def write(self): pass
-    
+
     def create(self,dsn):
         ds = None
         try:
@@ -366,7 +366,15 @@ class _DS(ABC):
             'fc':layer2.GetFeatureCount(),
             'lc':count2
                 }
-        #Because GDAL isnt returning errors to indicate whether a layer copy failed or not we have to assume failure when 
+        print("layer1 name: ", layer1.GetName())
+        print("layer1 geom type: ", ogr.GeometryTypeToName(layer1.GetGeomType()))
+        print("layer1 srid: ", layer1.GetSpatialRef().GetName())
+        print("layer1 feature count: ", layer1.GetFeatureCount())
+        print("layer2 name: ", layer2.GetName())
+        print("layer2 : ", ogr.GeometryTypeToName(layer2.GetGeomType()))
+        print("layer2 srid: ", layer2.GetSpatialRef().GetName())
+        print("layer2 feature count: ", layer2.GetFeatureCount())
+        #Because GDAL isnt returning errors to indicate whether a layer copy failed or not we have to assume failure when
         #the name, geometry or feature counts of the before and after layers is different
 
         #if any of these are different                           and if any of these are the same (lc2>lc1)
@@ -401,7 +409,7 @@ class PGDS(_DS):
     cur = None
     conn = None
     connectionstring = None
-    
+
     def __init__(self,fname=None,dbn=None):
         super(PGDS,self).__init__()
         if dbn: self.DBNAME = dbn
@@ -409,25 +417,25 @@ class PGDS(_DS):
         if fname: self._parseConnectionString(fname)
         else: fname = self.ogrconnstr()
         self.dsl = {fname:self.initalise(fname, True)}
-        
+
     def __enter__(self):
         self.connect()
         return super(PGDS,self).__enter__()
-    
+
     def __exit__(self, type, value, traceback):
         self.disconnect()
         return super(PGDS,self).__exit__(type, value, traceback)
-        
-    
+
+
     '''this is getting a bit confusing, a connection string shall be "PG: host/db etc &active_schema" and accept PG or plain formats as input'''
     def _parseConnectionString(self,cs):
         #TODO validation
         if cs.startswith('PG'): self.connectionstring = cs
         else: self.connectionstring = 'PG:{} active_schema={}'.format(cs,DST_SCHEMA)
-            
+
     def ogrconnstr(self):
         return self.connectionstring or 'PG:{} active_schema={}'.format(self.connstr(),DST_SCHEMA)
-        
+
     def connstr(self):
         if self.connectionstring: return self.connectionstring.split(':')[1].split('active_schema')[0].rstrip()
         go = self._getopts()
@@ -437,55 +445,59 @@ class PGDS(_DS):
         usr,pwd = CredsReader.userpass(DEF_CREDS)
         h,p = CredsReader.hostport(DEF_CREDS)
         return {'DBNAME':self.DBNAME,'HOST':h if h else DEF_HOST,'PORT':p if p else DEF_PORT,'USER':usr,'PASS':pwd}
-    
+
     def connect(self):
         if not self.cur:
             self.conn = psycopg2.connect(self.connstr())
             self.cur = self.conn.cursor()
-        
+
     def execute(self,qstr,results=False):
         success = self.cur.execute(qstr)
+        # added for loop so we can see stored function raise notices in python
+        for notice in self.conn.notices:
+            print(notice)
         return self.cur.fetchall() if results else not success or success
-        
+
     def disconnect(self):
         self.cur.close()
         self.conn.commit()
 
     def read(self,filt):
         '''Read PG tables'''
+        print("Reading layers...")
         layerlist = {}
-        #print ('DSL',self.dsl)
+
         for dsn in self.dsl:
-            #print ('dsn',dsn)
-            #print ('count',self.dsl[dsn].GetLayerCount())
             for index in range(self.dsl[dsn].GetLayerCount()):
                 layer = self.dsl[dsn].GetLayerByIndex(index)
                 name = layer.GetLayerDefn().GetName()
-                #print ('PGLN',name)
                 if name.find(DST_TABLE_PREFIX)==0 \
                 and self._tname(name):
                     #checks if (table)name is part of or in any of the filter items
-                    if not filt or max([1 if DST_TABLE_PREFIX + f == name else 0 for f in filt]) > 0: 
+                    if not filt or max([1 if DST_TABLE_PREFIX + f == name else 0 for f in filt]) > 0:
                         srid = self._findSRID(name,layer.GetSpatialRef(),USE_EPSG_WEBSERVICE)
                         layerlist[(dsn,name,srid)] = layer
         return layerlist
-    
+
     def _tname(self,name):
         '''Debugging shortcut to add list of tables for export'''
         return True
-        #return name.find('new_contour')==0
-     
+
     def write(self,layerlist):
         '''Attempts to write/copy contents of layerlist using copylayer|per-feat methods'''
+        print("Write features...")
         try:
             old_ow = self.setOverwrite()
-            succ1,fail1 = self.writeLayer(layerlist)
-            if fail1: 
-                succ2,fail2 = self.writeFeature(fail1)
+            print("Trying write_fast method...")
+            succ1,fail1 = self.write_fast(layerlist)
+            if fail1:
+                print("Write_fast method failed, now using write_slow...")
+                succ2,fail2 = self.write_slow(fail1)
                 if fail2:
+                    prin("Write_slow failed")
                     if len(fail1) == len(fail2)== len(layerlist):
                         raise LayerCompareException('No layers written')
-                    else: return succ1+succ2   
+                    else: return succ1+succ2
         except Exception as e:
             print(e)
             raise
@@ -494,14 +506,14 @@ class PGDS(_DS):
         return layerlist
 
 
-    def writeLayer(self,layerlist):
+    def write_fast(self,layerlist):
         '''PG write writes to a single DS since a DS represents a DB connection. SRID not transferred!'''
+        print("Using write_fast function...")
         successes,failures = {},{}
         try:
             self.connect()
             for dsn in layerlist:
                 try:
-                    #print 'PG create layer {}'.format(dsn[1])
                     writeto = list(self.dsl.values())[0]
                     c1 = writeto.GetLayerCount()
                     sridq = "select UpdateGeometrySRID('{}','wkb_geometry',{})".format(dsn[1].lower(),dsn[2])
@@ -512,33 +524,35 @@ class PGDS(_DS):
                     c2 = writeto.GetLayerCount()
                     lastlayer = writeto.GetLayer(c2-1)
 
+                    print("Checking how write_fast went...")
                     self.layerCompare(layerlist[dsn],lastlayer,c1,c2)
                     successes[dsn] = layerlist[dsn]
                 except LayerCompareException as lce:
                     '''This indicates that copylayer failed and we should revert to the feature/feature copy method'''
-                    print(lce)
+                    print("Copylayer failed with: ", lce)
                     failures[dsn] = layerlist[dsn]
                 except Exception:
                     raise
         finally:
             self.disconnect()
         return successes,failures
-    
-    def writeFeature(self,layerlist):
-        '''HACK to retain SRS 
+
+    def write_slow(self,layerlist):
+        '''HACK to retain SRS
         https://gis.stackexchange.com/questions/126705/how-to-set-the-spatial-reference-to-a-ogr-layer-using-the-python-api'''
+        print("Entering write_slow function...")
         successes,failures = {},{}
         for dsn in layerlist:
             try:
                 (datasource,layername,geomtype,preferences) = list(self.dsl.values())[0],dsn[1],layerlist[dsn].GetLayerDefn().GetGeomType(),self._getdsprefs()
-                #print 'PG create layer {}'.format(dsn[1])
+
                 dstsrs = osr.SpatialReference()
                 dstsrs.ImportFromEPSG(int(dsn[2]))
                 c1 = datasource.GetLayerCount()
 
                 try:
                     dstlayer = datasource.CreateLayer(layername,dstsrs,geomtype,preferences)
-                    #dstlayer = list(self.dsl.values())[0].CreateLayer(dsn[1],dstsrs,layerlist[dsn].GetLayerDefn().GetGeomType(),self._getdsprefs())
+
                 except ValueError as ve:
                     print ('Error Creating Layer on Datasource {}. {}'.format(dsn[1],ve))
 
@@ -546,7 +560,7 @@ class PGDS(_DS):
                 layerdef = ogr.Feature(layerlist[dsn].GetLayerDefn())
                 for i in range(layerdef.GetFieldCount()):
                     dstlayer.CreateField(layerdef.GetFieldDefnRef(i))
-                
+
                 # adding the features from input to dest
                 c1 = layerlist[dsn].GetFeatureCount()
                 for i in range(0, c1):
@@ -555,7 +569,7 @@ class PGDS(_DS):
                         dstlayer.CreateFeature(feature)
                     except ValueError as ve:
                         print ('Error Creating Feature on Layer {}. {}'.format(dsn[1],ve))
-                        
+
                 self.layerCompare(layerlist[dsn],dstlayer,c1,datasource.GetLayerCount())
                 successes[dsn] = layerlist[dsn]
             except LayerCompareException as lce:
@@ -564,7 +578,7 @@ class PGDS(_DS):
             except Exception:
                 raise
         return successes,failures
-        
+
 class PGDS_Version(PGDS):
     '''table versioning for PG'''
     def __init__(self,fname=None):
@@ -576,33 +590,33 @@ class PGDS_Version(PGDS):
         res = self.cur.execute(qstr)
         self.cur.execute("SELECT table_version.ver_complete_revision();")
         return res
-    
+
     def _genVerText(self):
         return 'this is my edit'
-    
+
     def _enableVer(self,schema,table):
         self.cur.execute("SELECT table_version.ver_enable_versioning('{0}', '{1}');".format(schema,table))
-    
+
     def _disableVer(self,schema,table):
         self.cur.execute("SELECT table_version.ver_disable_versioning('{0}', '{1}');".format(schema,table))
 
 
 class SFDS(_DS):
-    
+
     INIT_VAL = 1
     DRIVER_NAME = 'ESRI Shapefile'
 
     OGR_DS_PREFS = []
     OGR_LAYER_PREFS = ["OVERWRITE=NO","GEOM_TYPE=geometry","ENCODING=UTF-8"]
-    
+
     def __init__(self,fname=None):
         super(SFDS,self).__init__()
         #print 'SFDS',fname
         self._initpath(fname)
-        
+
     def _initpath(self,fname):
         self.shppath = DEF_SHAPE_PATH
-        if fname: 
+        if fname:
             if os.path.isdir(fname):
                 #if provided fname is a directory make this the source path
                 self.shppath = (fname,)
@@ -614,14 +628,14 @@ class SFDS(_DS):
                 self.dsl = {fname:self.initalise(fname, True)}
         else:
             self.dsl = self._getFileDS()
-    
+
     def connstr(self):
         #TODO do something intelligent here like read from a def dir?
         return 'shapefile.shp'
-    
+
     def readdir(self,spath):
         return [fp for fp in os.listdir(spath) if re.search('.shp$',fp)]
-        
+
     def _getFileDS(self):
         '''loop directories + shapefiles + layers'''
         shplist = {}
@@ -631,26 +645,26 @@ class SFDS(_DS):
                 #recursive so potentially problematic on nested directories
                 shplist[shpname] = SFDS(shpname).dsl[shpname]
         return shplist
-        
+
     def connect(self):
         pass
 
     def disconnect(self):
         pass
-    
+
     def execute(self,qstr):
         pass
 
     def read(self,filt):
         '''Shapefile reader'''
+        print("Running read function...")
         layerlist = {}
         for dsn in self.dsl:
             for index in range(self.dsl[dsn].GetLayerCount()):
                 layer = self.dsl[dsn].GetLayerByIndex(index)
                 name = layer.GetLayerDefn().GetName()
-                #print ('SFLN',name)
                 #checks if name is part of in any if the filter items
-                if not filt or max([1 if f in name else 0 for f in filt])>0: 
+                if not filt or max([1 if f in name else 0 for f in filt])>0:
                     srid = self._findSRID(name,layer.GetSpatialRef(),USE_EPSG_WEBSERVICE)
                     layerlist[(dsn,name,srid)] = layer
         return layerlist
@@ -658,10 +672,10 @@ class SFDS(_DS):
     def write(self,layerlist,cropcolumn=None):
         '''Attempt to two different write/copy methods'''
         try:
-            succ1,fail1 = self.writeLayer(layerlist,cropcolumn)
-            if fail1: 
-                #succ2,fail2 = self.writeLayerAlt(fail1,cropcolumn)
-                succ2,fail2 = self.writeFeature(fail1,cropcolumn)
+            succ1,fail1 = self.write_fast(layerlist,cropcolumn)
+            if fail1:
+                print("Write_fast failed: ", fail1)
+                succ2,fail2 = self.write_feat(fail1,cropcolumn)
                 if fail2:
                     if len(fail1) == len(fail2)== len(layerlist):
                         raise LayerCompareException('No layers written')
@@ -679,15 +693,15 @@ class SFDS(_DS):
         if os.path.exists(srcfile): self.driver.DeleteDataSource(srcfile)
         return srcname,self.driver.CreateDataSource(srcfile,self._getdsprefs())
 
-    def writeLayer(self,layerlist,cropcolumn):
+    def write_fast(self,layerlist,cropcolumn):
         '''TODO. Write new shp per layer overwriting existing'''
         #set gdal exceptions to catch unicode errors
+        print("Using write_fast function...")
         old = setGdalException()
         successes,failures = {},{}
         for dsn in layerlist:
             try:
                 srcname,dstds = self.setupDS(dsn)
-                #dstds = self.driver.Create(srcfile,self._getdsprefs())
                 c1 = dstds.GetLayerCount()
                 cpy = self._copyLayer_wrapper(dstds,layerlist,dsn,srcname)
                 #this section hacked in to add delete column functionality
@@ -698,7 +712,7 @@ class SFDS(_DS):
                 successes[dsn] = layerlist[dsn]
             except Warning as w:
                 #this is supposed to catch gdal warnings...
-                print (w)
+                print ("Gdal warning in write_fast function: ", w)
             except RuntimeError as rune:
                 #this is supposed to catch gdal errors with GdalExceptions turned on...
                 print (rune)
@@ -720,22 +734,22 @@ class SFDS(_DS):
     @captureGdalError
     def _copyLayer_wrapper(self,dstds,layerlist,dsn,srcname):
         return dstds.CopyLayer(layerlist[dsn],srcname,self._getlayerprefs())
-        
+
     @captureGdalError
     def _createFeature_wrapper(self,dstlyr,feature):
         return dstlyr.CreateFeature(feature)
-        
+
     @captureGdalError
     def _createFeatureOverwrite_wrapper(self,dstlyr,feature):
         dstlyr.CreateFeature(feature)
         newfeat = self._overwriteField(feature,dstlyr.GetFeature(feature.GetFID()-1))
-        if newfeat: 
+        if newfeat:
             dstlyr.DeleteFeature(feature.GetFID())
             dstlyr.CreateFeature(newfeat)
 
 
 
-    def writeFeature(self,layerlist,cropcolumn):
+    def write_feat(self,layerlist,cropcolumn):
         '''Per-feature writer'''
         copyFeature  = self._createFeature_wrapper
         cfid = id(copyFeature)
@@ -743,17 +757,16 @@ class SFDS(_DS):
         for dsn in layerlist:
             old = setGdalException()
             try:
-                #dstds = self.dsl.values()
                 dstname,dstds = self.setupDS(dsn)
                 geomtype,preferences = layerlist[dsn].GetLayerDefn().GetGeomType(),self._getlayerprefs()
-                #print 'PG create layer {}'.format(dsn[1])
+
                 dstsrs = osr.SpatialReference()
                 dstsrs.ImportFromEPSG(int(dsn[2]))
                 c1 = dstds.GetLayerCount()
 
                 try:
                     dstlayer = dstds.CreateLayer(dstname,dstsrs,geomtype,preferences)
-                    #dstlayer = list(self.dsl.values())[0].CreateLayer(dsn[1],dstsrs,layerlist[dsn].GetLayerDefn().GetGeomType(),self._getdsprefs())
+
                 except ValueError as ve:
                     print ('Error Creating Layer on Datasource {}. {}'.format(dsn[1],ve))
 
@@ -761,9 +774,9 @@ class SFDS(_DS):
                 layerdef = ogr.Feature(layerlist[dsn].GetLayerDefn())
                 for i in range(layerdef.GetFieldCount()):
                     dstlayer.CreateField(layerdef.GetFieldDefnRef(i))
-                
+
                 # adding the features from input to dest
-                
+
                 layerlist[dsn].ResetReading()
                 feature = layerlist[dsn].GetNextFeature()
                 while feature:
@@ -772,7 +785,7 @@ class SFDS(_DS):
                         copyFeature(dstlayer,feature)
                     except GdalStdoutCaptureException as goc:
                         # the utf-8 error only gets reported once so we have to assume every subsequent call has failed too
-                        # thats why we swap out the create-layer function with the create-overwrite-field one 
+                        # thats why we swap out the create-layer function with the create-overwrite-field one
                         copyFeature = self._createFeatureOverwrite_wrapper
                         cfid = id(copyFeature)
                         #Now just try and fix the incorrect but already written feature
@@ -781,16 +794,15 @@ class SFDS(_DS):
                         except Exception as e:
                             print('Field copy didn\'t work, bailing out',e)
                             raise
-                        
-                        #copyFeature(dstlayer,feature)
-                        #failures[dsn] = layerlist[dsn]
+
+
                     except ValueError as ve:
                         print ('Error Creating Feature on Layer {}. {}'.format(dsn[1],ve))
                     feature = layerlist[dsn].GetNextFeature()
 
                 c2 = layerlist[dsn].GetFeatureCount()
 
-                self.layerCompare(layerlist[dsn],dstlayer,c1,c2)
+                #self.layerCompare(layerlist[dsn],dstlayer,c1,c2)
                 successes[dsn] = layerlist[dsn]
             except LayerCompareException as lce:
                 print(lce)
@@ -822,7 +834,7 @@ class SFDS(_DS):
             return dstfeat
         return None
 
-    def writeLayerAlt(self,layerlist,cropcolumn):
+    def write_alt(self,layerlist,cropcolumn):
         '''Alternative shape writer, still uses copylayer'''
         successes,failures = {},{}
         for dsn in layerlist:
@@ -840,7 +852,7 @@ class SFDS(_DS):
                     except:
                         for suf in SHP_SUFFIXES:
                             f = '{0}/{1}.{2}'.format(srcfile,srcname,suf)
-                            if os.path.isfile(f): 
+                            if os.path.isfile(f):
                                 try: os.remove(f)
                                 except : shutil.rmtree(f, ignore_errors=True)
                 dstds = self.driver.CreateDataSource(srcfile,self._getdsprefs())
@@ -857,45 +869,45 @@ class SFDS(_DS):
                 print(lce)
                 failures[dsn] = layerlist[dsn]
         return successes,failures
-       
+
 class Reporter(object):
     def __init__(self):
         pass
-        
-    
+
+
     def getComponents(self,id):
         res = None
         qstr = "select ts,layer,ufid_components from rbl_associations where ufid = {}".format(id)
         with PGDS() as pgds:
             pgds.connect()
             res = pgds.execute(qstr,results=True)
-            
+
         for line in res:
             print ('ID {} in Layer {} contains segments {}  -  (constructed on {})'.format(id,line[1],line[2],line[0]))
-        
-        
+
+
 #   -----------------------------------------------------------------------------------------------
 
 class CredsReader(object):
     '''Class reading named credentials file contains KV pairs, provides conveninece UP, HP and API'''
-    
+
     @classmethod
     def userpass(cls,upfile):
         return (cls.searchfile(upfile,'username'),cls.searchfile(upfile,'password'))
-    
+
     @classmethod
     def hostport(cls,upfile):
         return (cls.searchfile(upfile,'host'),cls.searchfile(upfile,'port'))
-    
+
     @classmethod
     def apikey(cls,kfile):
         return cls.searchfile(kfile,'key')
-    
+
     @classmethod
     def creds(cls,cfile):
         '''Read CIFS credentials file'''
         return (cls.searchfile(cfile,'username'),cls.searchfile(cfile,'password'),cls.searchfile(cfile,'domain','WGRP'))
-    
+
     @classmethod
     def searchfile(cls,sfile,skey,default=None):
         try:
@@ -911,7 +923,7 @@ class CredsReader(object):
     def _walk(cls,sfile,skey,default,dir):
         '''Simple directory walker looking for named file in all sub dirs'''
         for p,_,f in os.walk(dir):
-            if sfile in f: 
+            if sfile in f:
                 return CredsReader.searchfile(os.path.join(p,sfile), skey, default)
         raise FileNotFoundError('File not found during directory walk of {}'.format(dir))
 
@@ -925,40 +937,40 @@ def initds(ds,arg=None):
 def main():
     global OVERWRITE
     global OGR_COPY_PREFS
-    global USE_EPSG_WEBSERVICE            
+    global USE_EPSG_WEBSERVICE
     global ENABLE_VERSIONING
-    
+
     switch = None
-    
+
     spath = None
     layer = None
     ufidname = 'unknown'
     loadcropregions = False
     actionflag = 7
     selectflag = False
-    
+
     try:
         opts, _ = getopt.getopt(sys.argv[1:], "hcieposd:l:u:m:wvnxyrz", ["help","cropregion","import","export","process","overwrite","selection","dir=","layer=","ufid=","merge=","webservice","version","nolaunder","excise","deepexcise","release","linkrelease"])
     except getopt.error as msg:
         usage(msg)
         sys.exit(2)
-    
+
     #do the help check first
     if any([True for i in opts if re.search('-h',i[0])]):
         print (__doc__)
         sys.exit(0)
-        
+
     #opts
     for o, a in opts:
         if o in ("-h", "--help"):
             print (__doc__)
             sys.exit(0)
         if o in ("-c", "--cropregion"):
-            loadcropregions = True        
+            loadcropregions = True
         if o in ("-i", "--import"):
-            actionflag = 1        
+            actionflag = 1
         if o in ("-e", "--export"):
-            actionflag = 2 
+            actionflag = 2
         if o in ("-p", "--process"):
             actionflag = 4
         if o in ("-o", "--overwrite"):
@@ -996,7 +1008,7 @@ def main():
             switch = 'RELEASE'
         if o in ("-z","--linkrelease"):
             switch = 'LINKRELEASE'
-        
+
     if switch == 'CROP':
         crop(spath,ufidname)
     elif switch == 'DEEPCROP':
@@ -1007,7 +1019,7 @@ def main():
         release(link=True)
     else:
         convertImpl(spath,layer,ufidname,actionflag,selectflag,loadcropregions)
-       
+
 def setConfig(uiconfig,config):
     global CONFIG
     CONFIG = config
@@ -1023,23 +1035,23 @@ def convert(uiconfig,config):
     # actionflag [A4] set to 7=import/process/export
     # selectflag [A5] set to True = only process shp in dir
     convertImpl(uiconfig.val_dir,None,uiconfig.val_fid,7,True,uiconfig.opt_cropreg)
-    
-def convertImpl(spath,layer,ufidname,actionflag,selectflag,loadcropregions):            
+
+def convertImpl(spath,layer,ufidname,actionflag,selectflag,loadcropregions):
     #actionflag = 2
-    #inlayers=['airport_poly','lake_poly','railway_cl']  
+    #inlayers=['airport_poly','lake_poly','railway_cl']
     inlayers = ()
-    
+
     if ENABLE_VERSIONING:
         PXDS = PGDS_Version
     else:
         PXDS = PGDS
-        
+
     '''Initialise source and dest DS objects'''
     if loadcropregions:
         lr = LayerReader(initds(SFDS,'CropRegions.shp'),initds(PXDS))
         lr.transfer()
-             
-    # UPLOAD. Transfer shapefiles up to DB and call reblocker 
+
+    # UPLOAD. Transfer shapefiles up to DB and call reblocker
     if actionflag & 1:
         print ('Transfer Shape -> PostgreSQL')
         with SFDS(spath) as sfds:
@@ -1048,7 +1060,7 @@ def convertImpl(spath,layer,ufidname,actionflag,selectflag,loadcropregions):
                 inlayers = [k[1] for k in lr.transfer(layer)]
         #lr = LayerReader(initds(SFDS,spath),initds(PXDS))
         #inlayers = [k[1] for k in lr.transfer(layer)]
-    
+
     # REBLOCK
     if actionflag & 4:
         print ('Reblock PG Layers')
@@ -1059,7 +1071,7 @@ def convertImpl(spath,layer,ufidname,actionflag,selectflag,loadcropregions):
         #lr = LayerReader(None,initds(PXDS))
         #lchoose = layer if layer else (inlayers if selectflag else None)
         #lr.reblock(u=ufidname,l=lchoose,o=OVERWRITE)
-        
+
     # DOWNLOAD. Write reblocked tables out to shapefile
     if actionflag & 2:
         print ('Transfer PostgreSQL -> Shape')
@@ -1071,17 +1083,17 @@ def convertImpl(spath,layer,ufidname,actionflag,selectflag,loadcropregions):
         #lr = LayerReader(initds(PXDS),initds(SFDS,spath))
         #inlayers = inlayers if inlayers else [i[i.rfind('/')+1:i.rfind('.')] for i in lr.dst.dsl]
         #outlayers = [k[1] for k in lr.transfer(inlayers if selectflag else layer)]
-        
+
 def deepcrop(spath,ufidname):
     '''Does a fid crop on a directory incl subs'''
     for (sub, _, _) in os.walk(spath):
         if not re.search(DST_SUBDIR,sub): crop(sub,ufidname)
-    
+
 def crop(spath,ufidname):
     '''strips out a names column from shapefile'''
     with SFDS(spath) as sfds:
         sfds.write(sfds.read(None),ufidname)
-        
+
 def release(link=False):
     '''Links/Releases (reblock->topoview) copy of latest reblock tables for public consumption'''
     qlist = ('select release_topo_layers()',)
@@ -1092,13 +1104,13 @@ def release(link=False):
             res = pgds.execute(qstr,results=True)
             print ('Release return code for "{}" = {}'.format(qstr,res or 'OK'))
         pgds.disconnect()
-            
+
 def usage(msg):
     print (msg,'\n'+'-'*50,__doc__)
-    
+
 if __name__ == '__main__':
     main()
-    
+
 '''
 TODO
 1. Transfer SRS from src to dst, extract srid from spatialref. ANS Use Webservice lookup with enable option
